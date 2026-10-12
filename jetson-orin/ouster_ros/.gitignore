@@ -1,0 +1,22 @@
+# ROS 2 build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# External Ouster driver and dependencies
+ros2_ws/src/ouster-ros/
+
+# Runtime resources
+resources/
+settings/
+
+# Temporary files
+__pycache__/
+*.pyc
+*.log
+*.bag
+*.db3
+*.mcap
+*.pcap
+.env
+/ros2_ws/*-metadata.json

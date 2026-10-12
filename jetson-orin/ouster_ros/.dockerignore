@@ -1,0 +1,19 @@
+# Git metadata
+.git/
+
+# ROS 2 workspace (downloaded and generated)
+ros2_ws/
+
+# Runtime directories
+resources/
+settings/
+
+# Temporary files
+__pycache__/
+*.pyc
+*.log
+*.bag
+*.db3
+*.mcap
+*.pcap
+.env
