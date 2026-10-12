@@ -55,16 +55,19 @@ to the local network and LiDAR configuration.
 
 ## 6. Build the ROS 2 workspace
 
-Inside the container:
+Inside the Docker container, run:
 
-    cd /ros2_ws
-    source /opt/ros/humble/setup.bash
+    source /ros2_ws/build_ws.sh
 
-    colcon build --symlink-install \
-      --parallel-workers 4 \
-      --cmake-args -DCMAKE_BUILD_TYPE=Release
+This script automatically builds the ROS 2 workspace and
+loads the required environment.
 
-    source install/setup.bash
+The workspace only needs to be rebuilt when the source
+code changes.
+
+For subsequent sessions, load the existing workspace with:
+
+    source /ros2_ws/install/setup.bash
 
 ## 7. Launch RSLiDAR and RViz2
 
