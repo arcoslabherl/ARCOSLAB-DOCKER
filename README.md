@@ -1,8 +1,14 @@
 # ARCOSLAB-DOCKER
 
-Reproducible Docker environments for robotics development at **ARCoS Lab — University of Costa Rica**.
+Reproducible Docker environments for robotics development at
+**ARCoS Lab — University of Costa Rica.**
 
-This repository provides containerized development environments for NVIDIA Jetson platforms, ROS 2, and robotics sensors. Each integration has its own workspace and configuration while sharing a common Jetson base image.
+This repository provides containerized development environments
+for NVIDIA Jetson platforms, ROS 2, robotics sensors and robot
+simulation.
+
+Each integration has its own Docker environment, ROS 2 workspace
+and configuration files.
 
 ## Supported Integrations
 
@@ -10,6 +16,7 @@ This repository provides containerized development environments for NVIDIA Jetso
 | --- | --- | --- | --- |
 | NVIDIA Jetson AGX Orin | RoboSense E1R | RSLiDAR SDK, ROS 2 Humble, RViz2 | [RoboSense E1R](jetson-orin/rslidar_sdk/README.md) |
 | NVIDIA Jetson AGX Orin | Ouster OS1-128 | Official Ouster ROS driver, ROS 2 Humble, RViz2 | [Ouster OS1-128](jetson-orin/ouster_ros/README.md) |
+| Dell Precision 5860 Tower | Franka Panda Simulator | ROS 2 Humble, RBC, Joint Reacher, RViz2 | Franka Panda Simulator |
 
 Both sensors have been tested with live point cloud visualization in RViz2.
 
@@ -22,14 +29,11 @@ ARCOSLAB-DOCKER/
 │       └── base-zedsdk-jetson-jp-ros2-humble/
 ├── jetson-orin/
 │   ├── rslidar_sdk/
-│   │   ├── Dockerfile
-│   │   ├── Makefile
-│   │   ├── config/
-│   │   └── ros2_ws/
 │   └── ouster_ros/
+├── tower/
+│   └── panda_sim/
 │       ├── Dockerfile
 │       ├── Makefile
-│       ├── config/
 │       ├── patches/
 │       └── ros2_ws/
 └── README.md
@@ -38,6 +42,9 @@ ARCOSLAB-DOCKER/
 - **`common/`** contains the shared Docker base environment.
 - **`jetson-orin/rslidar_sdk/`** contains the RoboSense E1R integration.
 - **`jetson-orin/ouster_ros/`** contains the Ouster OS1-128 integration, including a versioned compatibility patch.
+- **`tower/panda_sim/`** contains the Franka Panda simulation
+  environment for x86_64 workstations, including ROS 2 Humble,
+  Robot Body Coupler, Joint Reacher and RViz2.
 
 ## Technology Stack
 
@@ -74,6 +81,19 @@ Follow the [RoboSense setup guide](jetson-orin/rslidar_sdk/README.md) for depend
 
 Follow the [Ouster setup guide](jetson-orin/ouster_ros/README.md) for the pinned driver, compatibility patch, network configuration, and RViz2 visualization.
 
+-----
+### Franka Panda Simulator
+
+From the repository root:
+
+```bash
+cd tower/panda_sim
+make .pull
+make .build
+make run
+make .colcon_build
+make sim
+```
 
 For subsequent sessions, rebuilding is not necessary unless source code or dependencies have changed.
 

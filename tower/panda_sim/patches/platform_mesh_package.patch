@@ -1,0 +1,49 @@
+diff --git a/urdf/arcos_lab_mobile_platform.xacro b/urdf/arcos_lab_mobile_platform.xacro
+index 83791d2..e1368ff 100644
+--- a/urdf/arcos_lab_mobile_platform.xacro
++++ b/urdf/arcos_lab_mobile_platform.xacro
+@@ -305,7 +305,7 @@
+       <material name="ctorsobox"/>
+       <geometry>
+         <!-- <box size="1.0 0.7 0.5"/> -->
+-        <mesh filename="package://arcos_lab_mobile_platform_urdf/meshes/arcosbot-mobile-base_no_wheels.dae" scale="1 1 1"/>
++        <mesh filename="package://arcos_lab_asimilar_platform_robot_descriptions/meshes/arcosbot-mobile-base_no_wheels.dae" scale="1 1 1"/>
+       </geometry>
+       <origin rpy="0 0. 0." xyz="0. 0.0 0.1016"/>
+       <!-- <origin rpy="0 0 0." xyz="0 0 0.27"/> -->
+@@ -319,7 +319,7 @@
+       <material name="ctorsobox"/>
+       <geometry>
+         <!-- <box size="1.0 0.7 0.5"/> -->
+-        <mesh filename="package://arcos_lab_mobile_platform_urdf/meshes/am-3340L-8in_MKrev1.dae" scale="1 1 1"/>
++        <mesh filename="package://arcos_lab_asimilar_platform_robot_descriptions/meshes/am-3340L-8in_MKrev1.dae" scale="1 1 1"/>
+       </geometry>
+       <origin rpy="1.5708 0. 0." xyz="0. 0.0 0.0"/>
+       <!-- <origin rpy="0 0 0." xyz="0 0 0.27"/> -->
+@@ -341,7 +341,7 @@
+       <material name="ctorsobox"/>
+       <geometry>
+         <!-- <box size="1.0 0.7 0.5"/> -->
+-        <mesh filename="package://arcos_lab_mobile_platform_urdf/meshes/am-3340R-8in_MKrev1.dae" scale="1 1 1"/>
++        <mesh filename="package://arcos_lab_asimilar_platform_robot_descriptions/meshes/am-3340R-8in_MKrev1.dae" scale="1 1 1"/>
+       </geometry>
+       <origin rpy="1.5708 0. 0." xyz="0. 0.0 0.0"/>
+       <!-- <origin rpy="0 0 0." xyz="0 0 0.27"/> -->
+@@ -363,7 +363,7 @@
+       <material name="ctorsobox"/>
+       <geometry>
+         <!-- <box size="1.0 0.7 0.5"/> -->
+-        <mesh filename="package://arcos_lab_mobile_platform_urdf/meshes/am-3340R-8in_MKrev1.dae" scale="1 1 1"/>
++        <mesh filename="package://arcos_lab_asimilar_platform_robot_descriptions/meshes/am-3340R-8in_MKrev1.dae" scale="1 1 1"/>
+       </geometry>
+       <origin rpy="1.5708 0. 0." xyz="0. 0.0 0.0"/>
+       <!-- <origin rpy="0 0 0." xyz="0 0 0.27"/> -->
+@@ -385,7 +385,7 @@
+       <material name="ctorsobox"/>
+       <geometry>
+         <!-- <box size="1.0 0.7 0.5"/> -->
+-        <mesh filename="package://arcos_lab_mobile_platform_urdf/meshes/am-3340L-8in_MKrev1.dae" scale="1 1 1"/>
++        <mesh filename="package://arcos_lab_asimilar_platform_robot_descriptions/meshes/am-3340L-8in_MKrev1.dae" scale="1 1 1"/>
+       </geometry>
+       <origin rpy="1.5708 0. 0." xyz="0. 0.0 0.0"/>
+       <!-- <origin rpy="0 0 0." xyz="0 0 0.27"/> -->
