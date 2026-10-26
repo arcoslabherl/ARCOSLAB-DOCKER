@@ -1,0 +1,13 @@
+diff --git a/arcos-lab-asimilar-robot-startup/launch/rviz_sim_asimilar_01.launch.py b/arcos-lab-asimilar-robot-startup/launch/rviz_sim_asimilar_01.launch.py
+index db8207e..2c445e3 100644
+--- a/arcos-lab-asimilar-robot-startup/launch/rviz_sim_asimilar_01.launch.py
++++ b/arcos-lab-asimilar-robot-startup/launch/rviz_sim_asimilar_01.launch.py
+@@ -25,7 +25,6 @@ def generate_launch_description():
+             ],
+             executable='rviz2',
+             name='rviz2',
+-            arguments=['-d', arcoslab_asimilar_robot_startup_dir +
+-                       '/'+namespace+'.rviz'],
++            arguments=['-d', '/ros2_ws/panda_sim.rviz'],
+         )
+     ])

@@ -1,0 +1,21 @@
+# ROS 2 build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# External GitLab repositories
+ros2_ws/src/
+
+# Python
+pycache/
+*.pyc
+
+# Runtime files
+*.log
+*.bag
+*.db3
+*.mcap
+
+# Credentials and environment variables
+.env
+.env.*

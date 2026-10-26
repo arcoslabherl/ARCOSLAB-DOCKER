@@ -1,0 +1,19 @@
+# Git
+.git/
+
+# External repositories
+ros2_ws/src/
+
+# ROS 2 build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# Temporary files
+pycache/
+*.pyc
+*.log
+
+# Credentials
+.env
+.env.*

@@ -1,0 +1,13 @@
+diff --git a/rbc/rbc/reachers_lib/joint_reacher.py b/rbc/rbc/reachers_lib/joint_reacher.py
+index 798d397..81efc03 100644
+--- a/rbc/rbc/reachers_lib/joint_reacher.py
++++ b/rbc/rbc/reachers_lib/joint_reacher.py
+@@ -175,6 +175,8 @@ class Joint_reacher(Reacher):
+                          reacher_param_callback=self.param_callback,
+                          reacher_action_callback=self.action_callback,
+                          main_loop=self.loop, context=context)
++
++        self.cycle_freq = self._ros_params["cycle_freq"][0]
+         # do your own stuff!
+         # self._kin = RBC_kinematics(self._urdf_kdl_tree)
+         # self._kin.tool = Frame()
