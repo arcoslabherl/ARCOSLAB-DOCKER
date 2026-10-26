@@ -7,7 +7,7 @@ TAG = arcoslab-panda:sim-humble
 ROS_WS = $(CURDIR)/ros2_ws
 ROS_SRC = $(ROS_WS)/src
 
-.PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 stop 
+.PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 test-all-joints test-gripper test-panda stop 
 
 help:
 	@echo "Available commands:"
@@ -19,6 +19,9 @@ help:
 	@echo "  make sim            Launch Franka Panda simulator"
 	@echo "  make jr-init        Initialize Panda Joint Reacher"
 	@echo "  make test-j1        Test Panda J1 movement"
+	@echo "  make test-all-joints  Test all 7 Panda joints"
+	@echo "  make test-gripper     Test Panda gripper"
+	@echo "  make test-panda       Test all joints and gripper"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -147,6 +150,18 @@ jr-init:
 test-j1:
 	docker exec -it $(CONTAINER_NAME) bash \
 		/ros2_ws/test_joint.sh
+
+test-all-joints:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/test_all_joints.sh
+
+test-gripper:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/test_gripper.sh
+
+test-panda:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/test_panda.sh
 
 stop:
 	docker stop -t 1 $(CONTAINER_NAME)
