@@ -1,0 +1,294 @@
+#!/usr/bin/env python3
+
+import math
+import time
+
+import rclpy
+from rclpy.node import Node
+
+from sensor_msgs.msg import JointState
+from impedance_control_msgs.msg import State
+from std_msgs.msg import Bool
+from std_srvs.srv import Trigger, SetBool
+
+
+GELLO_TOPIC = "/gello/joint_states"
+PANDA_TOPIC = "/sim_asimilar_01/panda_arm/state"
+TARGET_TOPIC = "/gello/target_joint_states"
+
+JOINT_NAMES = [f"panda_j{i}" for i in range(7)]
+
+MAX_DISPLACEMENT = 0.25
+MAX_DISPLACEMENT_J7 = 1.31
+JOINT_LIMIT = 2.967
+MAX_SAMPLE_CHANGE = 0.5
+
+DATA_TIMEOUT = 0.3
+PANDA_STABLE_TIME = 0.5
+PANDA_STABLE_TOLERANCE = 0.01
+
+
+class GelloCalibrator(Node):
+    def __init__(self):
+        super().__init__("gello_calibrator")
+
+        self.enabled = False
+        self.calibrated = False
+
+        self.panda_position = None
+        self.panda_time = None
+        self.panda_stable_since = None
+
+        self.gello_previous = None
+        self.gello_unwrapped = None
+        self.gello_time = None
+
+        self.gello_initial = None
+        self.panda_initial = None
+
+        self.target_pub = self.create_publisher(
+            JointState, TARGET_TOPIC, 10
+        )
+
+        self.enabled_pub = self.create_publisher(
+            Bool, "/gello/enabled", 10
+        )
+
+        self.create_subscription(
+            JointState,
+            GELLO_TOPIC,
+            self.gello_callback,
+            10,
+        )
+
+        self.create_subscription(
+            State,
+            PANDA_TOPIC,
+            self.panda_callback,
+            10,
+        )
+
+        self.create_service(
+            Trigger,
+            "/gello/recenter",
+            self.recenter_callback,
+        )
+
+        self.create_service(
+            SetBool,
+            "/gello/enable",
+            self.enable_callback,
+        )
+
+        self.create_timer(0.05, self.check_safety)
+
+        self.get_logger().info(
+            "GELLO calibrator ready. Control DISABLED."
+        )
+
+    def panda_callback(self, msg):
+        if len(msg.position) != 7:
+            return
+
+        positions = list(msg.position)
+
+        if not all(math.isfinite(x) for x in positions):
+            return
+
+        now = time.monotonic()
+
+        if self.panda_position is None:
+            self.panda_stable_since = now
+        else:
+            difference = max(
+                abs(a - b)
+                for a, b in zip(positions, self.panda_position)
+            )
+
+            if difference > PANDA_STABLE_TOLERANCE:
+                self.panda_stable_since = now
+
+        self.panda_position = positions
+        self.panda_time = now
+
+    def gello_callback(self, msg):
+        if len(msg.position) != 7:
+            return
+
+        positions = list(msg.position)
+
+        if not all(math.isfinite(x) for x in positions):
+            return
+
+        if self.gello_previous is None:
+            self.gello_previous = positions.copy()
+            self.gello_unwrapped = positions.copy()
+
+        else:
+            deltas = []
+
+            for current, previous in zip(
+                positions, self.gello_previous
+            ):
+                raw_delta = current - previous
+
+                delta = math.atan2(
+                    math.sin(raw_delta),
+                    math.cos(raw_delta),
+                )
+
+                if abs(delta) > MAX_SAMPLE_CHANGE:
+                    self.get_logger().warning(
+                        "Unexpected GELLO joint jump."
+                    )
+                    return
+
+                deltas.append(delta)
+
+            self.gello_unwrapped = [
+                previous + delta
+                for previous, delta in zip(
+                    self.gello_unwrapped, deltas
+                )
+            ]
+
+            self.gello_previous = positions.copy()
+
+        self.gello_time = time.monotonic()
+
+        if not self.enabled or not self.calibrated:
+            return
+
+        targets = []
+
+        for index, (panda_home, current, gello_home) in enumerate(zip(
+            self.panda_initial,
+            self.gello_unwrapped,
+            self.gello_initial,
+        )):
+            displacement = current - gello_home
+
+            # Invertir solamente J7 (panda_j6)
+            if index == 6:
+                displacement = -displacement
+
+            # Permitir mayor recorrido únicamente en J7
+            limit = MAX_DISPLACEMENT_J7 if index == 6 else MAX_DISPLACEMENT
+
+            displacement = max(
+                -limit,
+                min(limit, displacement),
+            )
+
+            target = panda_home + displacement
+
+            target = max(
+                -JOINT_LIMIT,
+                min(JOINT_LIMIT, target),
+            )
+
+            targets.append(target)
+
+        output = JointState()
+        output.header.stamp = self.get_clock().now().to_msg()
+        output.name = JOINT_NAMES
+        output.position = targets
+
+        self.target_pub.publish(output)
+
+    def data_fresh(self):
+        now = time.monotonic()
+
+        if self.gello_time is None or self.panda_time is None:
+            return False
+
+        return (
+            now - self.gello_time < DATA_TIMEOUT
+            and now - self.panda_time < DATA_TIMEOUT
+        )
+
+    def recenter_callback(self, request, response):
+        if self.enabled:
+            response.success = False
+            response.message = "Disable control before recalibration."
+            return response
+
+        if not self.data_fresh():
+            response.success = False
+            response.message = "GELLO or Panda data unavailable."
+            return response
+
+        if (
+            self.panda_stable_since is None
+            or time.monotonic() - self.panda_stable_since
+            < PANDA_STABLE_TIME
+        ):
+            response.success = False
+            response.message = "Panda position is not stable yet."
+            return response
+
+        self.gello_initial = self.gello_unwrapped.copy()
+        self.panda_initial = self.panda_position.copy()
+
+        self.calibrated = True
+
+        response.success = True
+        response.message = "Calibration reference captured."
+
+        self.get_logger().info(response.message)
+
+        return response
+
+    def enable_callback(self, request, response):
+        if not request.data:
+            self.enabled = False
+
+            response.success = True
+            response.message = "GELLO control disabled."
+            return response
+
+        if not self.calibrated:
+            response.success = False
+            response.message = "Recalibration required."
+            return response
+
+        if not self.data_fresh():
+            response.success = False
+            response.message = "GELLO or Panda data unavailable."
+            return response
+
+        self.enabled = True
+
+        response.success = True
+        response.message = "GELLO control enabled."
+        return response
+
+    def check_safety(self):
+        if self.enabled and not self.data_fresh():
+            self.enabled = False
+            self.calibrated = False
+
+            self.get_logger().warning(
+                "Communication timeout. GELLO disabled."
+            )
+
+        status = Bool()
+        status.data = self.enabled
+        self.enabled_pub.publish(status)
+
+
+def main():
+    rclpy.init()
+    node = GelloCalibrator()
+
+    try:
+        rclpy.spin(node)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
+    main()
