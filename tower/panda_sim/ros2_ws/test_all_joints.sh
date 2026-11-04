@@ -40,16 +40,22 @@ create_controller() {
 
     echo "Configuring J$((index + 1)): ${joint}"
 
-    if ! ros2 node list | grep -Fxq "$node"; then
-        ros2 service call \
-            "${NS}/rbc_l2_ctrl" \
-            rbc_msgs_srvs/srv/RbcL2Ctrl \
-            "{cmd: 'create_re', data: 'JR', name: '${jr_name}'}"
+    # Ask RBC itself whether the controller exists:
+    # 'ros2 node list' can still show nodes from a previous run.
+    local result
+    if ! result=$(timeout 15 ros2 service call \
+        "${NS}/rbc_l2_ctrl" \
+        rbc_msgs_srvs/srv/RbcL2Ctrl \
+        "{cmd: 'create_re', data: 'JR', name: '${jr_name}'}"); then
+        echo "ERROR: RBC did not respond."
+        return 1
+    fi
 
+    if grep -q "result='Ok'" <<< "$result"; then
         local ready=false
 
         for attempt in $(seq 1 30); do
-            if ros2 param get "$node" weight >/dev/null 2>&1; then
+            if timeout 5 ros2 param get "$node" weight >/dev/null 2>&1; then
                 ready=true
                 break
             fi
@@ -62,11 +68,16 @@ create_controller() {
         fi
 
         ros2 param set "$node" joints "['${joint}']"
+
+    elif ! grep -q "Already exists" <<< "$result"; then
+        echo "ERROR: Controller ${jr_name} creation failed."
+        echo "$result"
+        return 1
     fi
 
     # Confirm that an existing controller has the correct joint
     local configured
-    configured=$(ros2 param get "$node" joints)
+    configured=$(timeout 10 ros2 param get "$node" joints) || true
 
     if [[ "$configured" != *"['${joint}']"* ]]; then
         echo "ERROR: ${jr_name} is not configured for ${joint}."
@@ -111,7 +122,7 @@ echo "=================================="
 echo "Franka Panda - Joint Tests"
 echo "=================================="
 
-if ! ros2 node list | grep -Fxq "${NS}/panda_arm"; then
+if ! timeout 10 ros2 topic echo --once "${NS}/panda_arm/state" >/dev/null 2>&1; then
     echo "ERROR: Panda simulator is not running."
     exit 1
 fi

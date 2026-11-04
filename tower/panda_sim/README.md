@@ -167,9 +167,13 @@ Expected result:
 
 ## 9. Stop
 
-Press Ctrl+C in the terminal running the simulator.
+Press Ctrl+C in the terminal running the simulator (and GELLO).
+Closing that terminal also stops everything it started.
 
-Then:
+`make sim` and `make gello` refuse to start a second copy while
+one is already running.
+
+To stop the container:
 
     make stop
 
@@ -199,7 +203,8 @@ Then:
 - ros2_ws/test_gello.sh: GELLO pipeline test
 - ros2_ws/gello_teleop/: GELLO ROS 2 package (driver,
   calibrator, offset tool, configuration)
-- patches/: Compatibility fixes
+- ros2_ws/stop_session.sh: Stops a session when its terminal closes
+- patches/: Compatibility fixes (including RBC process cleanup)
 - ros2_ws/src/: External ROS 2 repositories
 
 ## Notes

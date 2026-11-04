@@ -14,6 +14,15 @@ GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_POR
 
 ROS_SOURCE = source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
 
+# Run a long-lived script (sim, GELLO) in the container. 'docker exec'
+# does not stop it when the terminal is closed, so stop its process
+# group whenever this command ends (Ctrl+C, closed terminal, error).
+define exec_session
+	@bash -c 'trap "docker exec $(CONTAINER_NAME) bash /ros2_ws/stop_session.sh $$$$ >/dev/null 2>&1" EXIT; \
+		trap "exit 129" HUP; trap "exit 130" INT; trap "exit 143" TERM; \
+		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
+endef
+
 .PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-recenter gello-enable gello-disable gello-offsets test-gello stop
 
 help:
@@ -121,6 +130,18 @@ help:
 		exit 1; \
 	fi
 
+	@echo "Checking RBC process cleanup patch..."
+
+	@if git -C $(ROS_SRC)/robot-body-coupler apply --reverse --check "$(CURDIR)/patches/rbc_process_cleanup.patch" >/dev/null 2>&1; then \
+		echo "RBC process cleanup patch already applied."; \
+	elif git -C $(ROS_SRC)/robot-body-coupler apply --check "$(CURDIR)/patches/rbc_process_cleanup.patch" >/dev/null 2>&1; then \
+		git -C $(ROS_SRC)/robot-body-coupler apply "$(CURDIR)/patches/rbc_process_cleanup.patch" && \
+		echo "RBC process cleanup patch applied."; \
+	else \
+		echo "ERROR: Cannot apply RBC process cleanup patch."; \
+		exit 1; \
+	fi
+
 	@echo "Simulator repositories downloaded."
 
 .build:
@@ -135,6 +156,7 @@ run:
 	docker run \
 	--detach \
 	--rm \
+	--init \
 	--network=host \
 	-e DISPLAY=$(DISPLAY) \
 	-e QT_X11_NO_MITSHM=1 \
@@ -156,8 +178,7 @@ debug:
 	/ros2_ws/build_ws.sh
 
 sim:
-	docker exec -it $(CONTAINER_NAME) bash \
-	/ros2_ws/start_sim.sh
+	$(call exec_session,/ros2_ws/start_sim.sh)
 
 jr-init:
 	docker exec -it $(CONTAINER_NAME) bash \
@@ -180,12 +201,10 @@ test-panda:
 		/ros2_ws/test_panda.sh
 
 gello:
-	docker exec -it $(CONTAINER_NAME) bash \
-		/ros2_ws/start_gello.sh dynamixel $(GELLO_PORT)
+	$(call exec_session,/ros2_ws/start_gello.sh dynamixel $(GELLO_PORT))
 
 gello-fake:
-	docker exec -it $(CONTAINER_NAME) bash \
-		/ros2_ws/start_gello.sh fake
+	$(call exec_session,/ros2_ws/start_gello.sh fake)
 
 gello-recenter:
 	docker exec -it $(CONTAINER_NAME) bash -c \
@@ -212,4 +231,9 @@ test-gello:
 		/ros2_ws/test_gello.sh
 
 stop:
-	docker stop -t 1 $(CONTAINER_NAME)
+	-docker stop -t 1 $(CONTAINER_NAME)
+	@# --rm removal finishes after 'docker stop' returns; wait for it
+	@# so an immediate 'make run' does not hit a name conflict.
+	@while docker container inspect $(CONTAINER_NAME) >/dev/null 2>&1; do \
+		sleep 0.2; \
+	done

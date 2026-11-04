@@ -1,0 +1,110 @@
+diff --git a/rbc/rbc/rbc.py b/rbc/rbc/rbc.py
+index 0c9fdad..9efbd80 100644
+--- a/rbc/rbc/rbc.py
++++ b/rbc/rbc/rbc.py
+@@ -36,6 +36,7 @@ from rbc.rbc_shared_dict import SharedDict
+ from rbc_msgs_srvs.srv import RbcL2Ctrl
+ 
+ import multiprocessing as mp
++import signal
+ 
+ from rbc.reacher_extender_list import reachers_extender_desc
+ from rbc.reacher_extender_list import extender_var_dict
+@@ -810,6 +811,23 @@ class RBC(Node):
+         self.l1_publish_all()
+ 
+ 
++def stop_children(rbc, timeout=2.0):
++    # Reachers and extenders run in child processes. Stop them here:
++    # otherwise multiprocessing waits for them at exit and they are
++    # left running (orphaned) when RBC is finally killed.
++    # A repeated Ctrl+C (terminal + ros2 launch) must not abort cleanup.
++    signal.signal(signal.SIGINT, signal.SIG_IGN)
++    processes = [entry["process"] for entry in
++                 list(rbc._reachers.values()) + list(rbc._extenders.values())]
++    for process in processes:
++        if process.is_alive():
++            process.terminate()
++    for process in processes:
++        process.join(timeout)
++        if process.is_alive():
++            process.kill()
++
++
+ def main(args=None):
+     rclpy.init(args=args)
+ 
+@@ -821,8 +839,16 @@ def main(args=None):
+     except KeyboardInterrupt:
+         pass
+ 
++    except RuntimeError:
++        # rclpy (Humble) can fail taking a message while shutting down
++        if rclpy.ok():
++            raise
++
++    finally:
++        stop_children(rbc)
++
+     rbc.destroy_node()
+-    rclpy.shutdown()
++    rclpy.try_shutdown()
+ 
+ 
+ if __name__ == '__main__':
+diff --git a/rbc/rbc/reachers_lib/reacher.py b/rbc/rbc/reachers_lib/reacher.py
+index bef8912..baa3500 100644
+--- a/rbc/rbc/reachers_lib/reacher.py
++++ b/rbc/rbc/reachers_lib/reacher.py
+@@ -16,6 +16,11 @@
+ # along with this program. If not, see <http://www.gnu.org/licenses/>.
+ 
+ 
++import ctypes
++import multiprocessing
++import os
++import signal
++
+ from rclpy.node import Node
+ from rclpy.action import ActionServer
+ from rclpy.qos import QoSProfile
+@@ -134,10 +139,26 @@ class Reacher(Node):
+         else:
+             self.get_logger().info(msg)
+ 
++    @staticmethod
++    def _die_with_parent():
++        # Ask Linux to SIGTERM this reacher when RBC (its parent) dies,
++        # even if RBC is killed, so no orphan reacher keeps running.
++        PR_SET_PDEATHSIG = 1
++        try:
++            libc = ctypes.CDLL("libc.so.6", use_errno=True)
++            libc.prctl(PR_SET_PDEATHSIG, signal.SIGTERM)
++        except OSError:
++            return
++        parent = multiprocessing.parent_process()
++        if parent is not None and os.getppid() != parent.pid:
++            # RBC already died before prctl took effect
++            os._exit(0)
++
+     @classmethod
+     def reacher_process(
+             cls, l2_data, urdf_tree_root, name, namespace,
+             min_limits, max_limits, l2_data_extenders):
++        cls._die_with_parent()
+         my_context = Context()
+         my_context.init(args=[name, "--ros-args", "-r", f"__ns:={namespace}"])
+         reacher = cls(
+@@ -147,6 +168,10 @@ class Reacher(Node):
+         new_executor = SingleThreadedExecutor(context=my_context)
+         reacher.log(f"Starting reacher: {name}")
+         new_executor.add_node(reacher)
+-        while my_context.ok():
+-            rclpy.spin_once(reacher, executor=new_executor)
++        try:
++            while my_context.ok():
++                rclpy.spin_once(reacher, executor=new_executor)
++        except KeyboardInterrupt:
++            # Ctrl+C reaches the whole process group: exit quietly
++            return
+         reacher.log(f"{name}: out of spin")

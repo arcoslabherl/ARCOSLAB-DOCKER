@@ -20,6 +20,19 @@ if [[ "$BACKEND" == "dynamixel" && ! -e "$PORT" ]]; then
     exit 1
 fi
 
+# Refuse to start a second GELLO next to a running one
+if pgrep -f "gello_teleop/lib/gello_teleop/gello_" >/dev/null; then
+    echo "ERROR: GELLO is already running."
+    echo "Stop it with Ctrl+C in its terminal, or restart the container:"
+    echo "    make stop && make run"
+    exit 1
+fi
+
+# Let the Makefile stop this session if its terminal is closed
+if [[ -n "${SESSION_ID:-}" ]]; then
+    ps -o pgid= -p $$ | tr -d ' ' > "/tmp/ros2_session.${SESSION_ID}"
+fi
+
 echo "Starting GELLO (${BACKEND} backend)..."
 
 ros2 launch gello_teleop gello.launch.py \

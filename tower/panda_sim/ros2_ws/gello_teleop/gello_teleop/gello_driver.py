@@ -17,6 +17,7 @@ import time
 
 import rclpy
 from rclpy.exceptions import ParameterUninitializedException
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.parameter import Parameter
 from sensor_msgs.msg import JointState
@@ -188,16 +189,13 @@ class GelloDriver(Node):
             if not all(math.isfinite(value) for value in values):
                 continue
 
-            joint_msg = JointState()
-            joint_msg.header.stamp = self.get_clock().now().to_msg()
-            joint_msg.name = JOINT_NAMES
-            joint_msg.position = values[:NUM_JOINTS]
-            self.joint_pub.publish(joint_msg)
-
-            if self.has_gripper:
-                gripper_msg = Float32()
-                gripper_msg.data = float(values[NUM_JOINTS])
-                self.gripper_pub.publish(gripper_msg)
+            try:
+                self.publish(values)
+            except Exception:
+                # Ctrl+C can shut ROS down between rclpy.ok() and publish
+                if not rclpy.ok():
+                    break
+                raise
 
             published += 1
             elapsed = time.monotonic() - rate_start
@@ -206,6 +204,18 @@ class GelloDriver(Node):
                     f"Publishing at {published / elapsed:.1f} Hz")
                 published = 0
                 rate_start = time.monotonic()
+
+    def publish(self, values):
+        joint_msg = JointState()
+        joint_msg.header.stamp = self.get_clock().now().to_msg()
+        joint_msg.name = JOINT_NAMES
+        joint_msg.position = values[:NUM_JOINTS]
+        self.joint_pub.publish(joint_msg)
+
+        if self.has_gripper:
+            gripper_msg = Float32()
+            gripper_msg.data = float(values[NUM_JOINTS])
+            self.gripper_pub.publish(gripper_msg)
 
     def destroy_node(self):
         self.running = False
@@ -221,13 +231,12 @@ def main():
     try:
         node = GelloDriver()
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         if node is not None:
             node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
