@@ -7,7 +7,14 @@ TAG = arcoslab-panda:sim-humble
 ROS_WS = $(CURDIR)/ros2_ws
 ROS_SRC = $(ROS_WS)/src
 
-.PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 test-all-joints test-gripper test-panda stop 
+# GELLO serial device (a /dev/serial/by-id/... path also works).
+# It is passed to the container by 'make run' only if it exists then.
+GELLO_PORT ?= /dev/ttyUSB0
+GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_PORT),)
+
+ROS_SOURCE = source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
+
+.PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-recenter gello-enable gello-disable gello-offsets test-gello stop
 
 help:
 	@echo "Available commands:"
@@ -22,6 +29,13 @@ help:
 	@echo "  make test-all-joints  Test all 7 Panda joints"
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
+	@echo "  make gello          Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
+	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
+	@echo "  make gello-recenter Capture GELLO/Panda reference pose"
+	@echo "  make gello-enable   Enable GELLO control"
+	@echo "  make gello-disable  Disable GELLO control"
+	@echo "  make gello-offsets GELLO_SIGNS=\"1 -1 ...\"  Calibrate a GELLO unit"
+	@echo "  make test-gello     Test the GELLO pipeline (needs sim + gello)"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -117,6 +131,7 @@ help:
 
 run:
 	@xhost +si:localuser:root > /dev/null
+	@$(if $(GELLO_DEVICE),echo "GELLO found at $(GELLO_PORT).",echo "Note: no GELLO at $(GELLO_PORT). Plug it in and re-run 'make run' to use it.")
 	docker run \
 	--detach \
 	--rm \
@@ -125,6 +140,7 @@ run:
 	-e QT_X11_NO_MITSHM=1 \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
 	-v $(ROS_WS):/ros2_ws:rw \
+	$(GELLO_DEVICE) \
 	--name $(CONTAINER_NAME) \
 	$(TAG) \
 	bash -c "tail -f /dev/null"
@@ -162,6 +178,38 @@ test-gripper:
 test-panda:
 	docker exec -it $(CONTAINER_NAME) bash \
 		/ros2_ws/test_panda.sh
+
+gello:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/start_gello.sh dynamixel $(GELLO_PORT)
+
+gello-fake:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/start_gello.sh fake
+
+gello-recenter:
+	docker exec -it $(CONTAINER_NAME) bash -c \
+		"$(ROS_SOURCE) && ros2 service call /gello/recenter std_srvs/srv/Trigger"
+
+gello-enable:
+	docker exec -it $(CONTAINER_NAME) bash -c \
+		"$(ROS_SOURCE) && ros2 service call /gello/enable std_srvs/srv/SetBool '{data: true}'"
+
+gello-disable:
+	docker exec -it $(CONTAINER_NAME) bash -c \
+		"$(ROS_SOURCE) && ros2 service call /gello/enable std_srvs/srv/SetBool '{data: false}'"
+
+gello-offsets:
+	@if [ -z "$(GELLO_SIGNS)" ]; then \
+		echo 'Usage: make gello-offsets GELLO_SIGNS="1 -1 1 1 1 -1 1" [GELLO_START="0 0 0 -1.57 0 1.57 0"]'; \
+		exit 1; \
+	fi
+	docker exec -it $(CONTAINER_NAME) bash -c \
+		"$(ROS_SOURCE) && ros2 run gello_teleop gello_get_offset --port $(GELLO_PORT) --joint-signs $(GELLO_SIGNS) $(if $(GELLO_START),--start-joints $(GELLO_START),)"
+
+test-gello:
+	docker exec -it $(CONTAINER_NAME) bash \
+		/ros2_ws/test_gello.sh
 
 stop:
 	docker stop -t 1 $(CONTAINER_NAME)

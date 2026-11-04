@@ -16,7 +16,7 @@ and configuration files.
 | --- | --- | --- | --- |
 | NVIDIA Jetson AGX Orin | RoboSense E1R | RSLiDAR SDK, ROS 2 Humble, RViz2 | [RoboSense E1R](jetson-orin/rslidar_sdk/README.md) |
 | NVIDIA Jetson AGX Orin | Ouster OS1-128 | Official Ouster ROS driver, ROS 2 Humble, RViz2 | [Ouster OS1-128](jetson-orin/ouster_ros/README.md) |
-| Dell Precision 5860 Tower | Franka Panda Simulator | ROS 2 Humble, RBC, Joint Reacher, RViz2 | Franka Panda Simulator |
+| Dell Precision 5860 Tower | Franka Panda Simulator | ROS 2 Humble, RBC, Joint Reacher, RViz2, GELLO | [Franka Panda Simulator](tower/panda_sim/README.md) |
 
 Both sensors have been tested with live point cloud visualization in RViz2.
 
