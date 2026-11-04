@@ -4,6 +4,7 @@ import math
 import time
 
 import rclpy
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from sensor_msgs.msg import JointState
@@ -12,50 +13,10 @@ from std_msgs.msg import Bool
 from std_srvs.srv import Trigger, SetBool
 
 
-GELLO_TOPIC = "/gello/joint_states"
-PANDA_TOPIC = "/sim_asimilar_01/panda_arm/state"
-TARGET_TOPIC = "/gello/target_joint_states"
-
 JOINT_NAMES = [f"panda_j{i}" for i in range(7)]
 
-# ============================================================================
-# EDITABLE CONFIGURATION — GELLO -> PANDA SIM
-# ============================================================================
-MAX_JOINT_J1 = math.radians(55) 
-MAX_JOINT_J2 = math.radians(45) 
-MAX_JOINT_J3 = math.radians(80) 
-MAX_JOINT_J4 = 0.25  
-MAX_JOINT_J5 = math.radians(80)  
-MAX_JOINT_J6 = math.radians(80)  
-MAX_JOINT_J7 = math.radians(270)  
-
-MAX_JOINT_DISPLACEMENTS = (
-    MAX_JOINT_J1, MAX_JOINT_J2, MAX_JOINT_J3, MAX_JOINT_J4,
-    MAX_JOINT_J5, MAX_JOINT_J6, MAX_JOINT_J7,
-)
-
-# Preserve existing motion directions. Only J7 is reversed.
-# If a joint moves in the opposite direction, change its entry to -1.
-JOINT_DIRECTIONS = (1, 1, 1, 1, 1, 1, 1)
-
-# Franka Panda's real joint position limits (radians), in J1..J7 order.
-# Safety bounds are separate from the editable GELLO travel limits.
-# Verify against the local simulation URDF before using another robot model.
-PANDA_JOINT_LOWER = (-2.8973, -1.7628, -2.8973, -3.0718,
-                     -2.8973, -0.0175, -2.8973)
-PANDA_JOINT_UPPER = ( 2.8973,  1.7628,  2.8973, -0.0698,
-                      2.8973,  3.7525,  2.8973)
-
-# Optional console diagnostic to compare GELLO, target and actual Panda.
-# Set DEBUG_JOINT to 1-7 for the joint to track, or 0 to disable logging.
-DEBUG_JOINT = 7
-DEBUG_INTERVAL = 1.0  # seconds
-
-MAX_SAMPLE_CHANGE = 0.5
-
-DATA_TIMEOUT = 0.3
-PANDA_STABLE_TIME = 0.5
-PANDA_STABLE_TOLERANCE = 0.01
+# All tunable values (topics, travel limits, directions, Panda joint
+# limits, timeouts) are ROS parameters, set in config/gello_panda.yaml.
 
 
 class GelloCalibrator(Node):
@@ -77,11 +38,10 @@ class GelloCalibrator(Node):
         self.panda_initial = None
         self.last_debug_time = 0.0
 
-        if not all(math.isfinite(x) and x > 0 for x in MAX_JOINT_DISPLACEMENTS):
-            raise ValueError("MAX_JOINT_J1..J7 must be finite positive radians")
+        self.load_parameters()
 
         self.target_pub = self.create_publisher(
-            JointState, TARGET_TOPIC, 10
+            JointState, self.target_topic, 10
         )
 
         self.enabled_pub = self.create_publisher(
@@ -90,14 +50,14 @@ class GelloCalibrator(Node):
 
         self.create_subscription(
             JointState,
-            GELLO_TOPIC,
+            self.gello_topic,
             self.gello_callback,
             10,
         )
 
         self.create_subscription(
             State,
-            PANDA_TOPIC,
+            self.panda_state_topic,
             self.panda_callback,
             10,
         )
@@ -119,13 +79,80 @@ class GelloCalibrator(Node):
         self.get_logger().info(
             "GELLO calibrator ready. Control DISABLED."
         )
-        for index, limit in enumerate(MAX_JOINT_DISPLACEMENTS, start=1):
+        for index, limit in enumerate(self.max_displacements, start=1):
             self.get_logger().info(
                 f"J{index}: +/-{limit:.3f} rad "
                 f"(+/-{math.degrees(limit):.1f} deg, "
                 f"{2 * math.degrees(limit):.1f} deg total), "
-                f"direction={JOINT_DIRECTIONS[index - 1]:+d}"
+                f"direction={self.joint_directions[index - 1]:+d}"
             )
+
+    def load_parameters(self):
+        defaults = {
+            "gello_topic": "/gello/joint_states",
+            "panda_state_topic": "/sim_asimilar_01/panda_arm/state",
+            "target_topic": "/gello/target_joint_states",
+            # Symmetric travel allowed from the recenter pose, per joint
+            "max_joint_displacement_deg":
+                [55.0, 45.0, 80.0, 14.3239, 80.0, 80.0, 270.0],
+            # 1 or -1 per joint; flip a joint that moves the wrong way
+            "joint_directions": [1, 1, 1, 1, 1, 1, 1],
+            # Franka Panda joint position limits (rad), J1..J7
+            "panda_joint_lower":
+                [-2.8973, -1.7628, -2.8973, -3.0718,
+                 -2.8973, -0.0175, -2.8973],
+            "panda_joint_upper":
+                [2.8973, 1.7628, 2.8973, -0.0698,
+                 2.8973, 3.7525, 2.8973],
+            # 1-7 logs that joint once per debug_interval, 0 disables
+            "debug_joint": 7,
+            "debug_interval": 1.0,
+            "max_sample_change": 0.5,
+            "data_timeout": 0.3,
+            "panda_stable_time": 0.5,
+            "panda_stable_tolerance": 0.01,
+        }
+
+        params = {}
+        for name, default in defaults.items():
+            self.declare_parameter(name, default)
+            params[name] = self.get_parameter(name).value
+
+        self.gello_topic = params["gello_topic"]
+        self.panda_state_topic = params["panda_state_topic"]
+        self.target_topic = params["target_topic"]
+
+        self.max_displacements = [
+            math.radians(value)
+            for value in params["max_joint_displacement_deg"]
+        ]
+        self.joint_directions = list(params["joint_directions"])
+        self.panda_lower = list(params["panda_joint_lower"])
+        self.panda_upper = list(params["panda_joint_upper"])
+
+        self.debug_joint = params["debug_joint"]
+        self.debug_interval = params["debug_interval"]
+        self.max_sample_change = params["max_sample_change"]
+        self.data_timeout = params["data_timeout"]
+        self.panda_stable_time = params["panda_stable_time"]
+        self.panda_stable_tolerance = params["panda_stable_tolerance"]
+
+        for name in ("max_joint_displacement_deg", "joint_directions",
+                     "panda_joint_lower", "panda_joint_upper"):
+            if len(params[name]) != len(JOINT_NAMES):
+                raise ValueError(f"{name} needs {len(JOINT_NAMES)} values")
+
+        if not all(math.isfinite(x) and x > 0
+                   for x in self.max_displacements):
+            raise ValueError(
+                "max_joint_displacement_deg must be finite positive values")
+
+        if any(d not in (-1, 1) for d in self.joint_directions):
+            raise ValueError("joint_directions must be 1 or -1")
+
+        if any(low >= high
+               for low, high in zip(self.panda_lower, self.panda_upper)):
+            raise ValueError("panda_joint_lower must be below upper")
 
     def panda_callback(self, msg):
         if len(msg.position) != 7:
@@ -146,7 +173,7 @@ class GelloCalibrator(Node):
                 for a, b in zip(positions, self.panda_position)
             )
 
-            if difference > PANDA_STABLE_TOLERANCE:
+            if difference > self.panda_stable_tolerance:
                 self.panda_stable_since = now
 
         self.panda_position = positions
@@ -178,7 +205,7 @@ class GelloCalibrator(Node):
                     math.cos(raw_delta),
                 )
 
-                if abs(delta) > MAX_SAMPLE_CHANGE:
+                if abs(delta) > self.max_sample_change:
                     self.get_logger().warning(
                         "Unexpected GELLO joint jump."
                     )
@@ -209,21 +236,21 @@ class GelloCalibrator(Node):
             self.gello_initial,
         )):
             # Relative teleoperation: keep the recenter behavior unchanged.
-            displacement = (current - gello_home) * JOINT_DIRECTIONS[index]
+            displacement = (current - gello_home) * self.joint_directions[index]
 
             # An independent, symmetric travel limit for every joint.
-            limit = MAX_JOINT_DISPLACEMENTS[index]
+            limit = self.max_displacements[index]
             limited_displacement = max(-limit, min(limit, displacement))
 
             # Also respect the Panda's absolute joint position bounds.
             desired = panda_home + limited_displacement
             target = max(
-                PANDA_JOINT_LOWER[index],
-                min(PANDA_JOINT_UPPER[index], desired),
+                self.panda_lower[index],
+                min(self.panda_upper[index], desired),
             )
             targets.append(target)
 
-            if DEBUG_JOINT == index + 1:
+            if self.debug_joint == index + 1:
                 debug_info = (
                     index, displacement, target,
                     abs(displacement - limited_displacement) > 1e-6,
@@ -232,7 +259,7 @@ class GelloCalibrator(Node):
 
         # Display one joint at a time, at a low frequency (not every sample).
         now = time.monotonic()
-        if debug_info is not None and now - self.last_debug_time >= DEBUG_INTERVAL:
+        if debug_info is not None and now - self.last_debug_time >= self.debug_interval:
             index, displacement, target, travel_clipped, physical_clipped = debug_info
             actual = self.panda_position[index]
             limits = []
@@ -263,8 +290,8 @@ class GelloCalibrator(Node):
             return False
 
         return (
-            now - self.gello_time < DATA_TIMEOUT
-            and now - self.panda_time < DATA_TIMEOUT
+            now - self.gello_time < self.data_timeout
+            and now - self.panda_time < self.data_timeout
         )
 
     def recenter_callback(self, request, response):
@@ -281,7 +308,7 @@ class GelloCalibrator(Node):
         if (
             self.panda_stable_since is None
             or time.monotonic() - self.panda_stable_since
-            < PANDA_STABLE_TIME
+            < self.panda_stable_time
         ):
             response.success = False
             response.message = "Panda position is not stable yet."
@@ -343,11 +370,11 @@ def main():
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

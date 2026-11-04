@@ -98,11 +98,82 @@ Check the Joint Reacher action:
 
     ros2 action list -t
 
-## 8. Stop
+## 8. GELLO teleoperation
 
-Press Ctrl+C in the terminal running the simulator.
+GELLO is read directly from its Dynamixel servos inside the
+container. No host software is needed.
+
+### Connect the device
+
+Plug in the GELLO **before** starting the container:
+
+    make run
+
+`make run` passes `/dev/ttyUSB0` to the container if it exists.
+For another device:
+
+    make run GELLO_PORT=/dev/serial/by-id/usb-FTDI_...
+
+### Configure the unit (once per GELLO)
+
+Each physical GELLO has its own joint offsets, signs and gripper
+angles, stored in:
+
+    ros2_ws/gello_teleop/config/gello_panda.yaml
+
+Copy them from the unit's `PORT_CONFIG_MAP` entry in
+gello_software, or measure them. Hold the GELLO in the Panda pose
+`0 0 0 -1.57 0 1.57 0` with the gripper trigger released and run:
+
+    make gello-offsets GELLO_SIGNS="1 -1 1 1 1 -1 1"
+
+Paste the printed block into the YAML file. The driver refuses
+to start with real hardware until offsets are set.
+
+### Run
+
+With the simulator running, in another terminal:
+
+    make gello            # real GELLO
+    make gello-fake       # no hardware: simulated GELLO motion
 
 Then:
+
+    make gello-recenter   # capture GELLO/Panda reference pose
+    make gello-enable     # start publishing targets
+    make gello-disable
+
+Topics:
+
+- `/gello/joint_states`: GELLO joint angles (rad)
+- `/gello/gripper`: 0.0 open, 1.0 closed
+- `/gello/target_joint_states`: Panda joint targets
+- `/gello/enabled`: control state
+
+Control disables itself if GELLO or Panda data stops for 0.3 s.
+
+Note: targets are not yet sent to the Panda, so the simulated
+arm does not move. That is the next integration step.
+
+### Test
+
+With `make sim` and `make gello-fake` running:
+
+    make test-gello
+
+Expected result:
+
+    GELLO pipeline test SUCCEEDED
+
+## 9. Stop
+
+Press Ctrl+C in the terminal running the simulator (and GELLO).
+Closing that terminal also stops everything it started.
+
+`make sim` and `make gello` refuse to start a second copy while
+one is already running.
+
+To stop the container:
 
     make stop
 
@@ -128,7 +199,12 @@ Then:
 - ros2_ws/setup_jr.sh: Joint Reacher initialization
 - ros2_ws/test_joint.sh: J1 movement test
 - ros2_ws/panda_sim.rviz: RViz2 configuration
-- patches/: Compatibility fixes
+- ros2_ws/start_gello.sh: GELLO startup
+- ros2_ws/test_gello.sh: GELLO pipeline test
+- ros2_ws/gello_teleop/: GELLO ROS 2 package (driver,
+  calibrator, offset tool, configuration)
+- ros2_ws/stop_session.sh: Stops a session when its terminal closes
+- patches/: Compatibility fixes (including RBC process cleanup)
 - ros2_ws/src/: External ROS 2 repositories
 
 ## Notes
@@ -141,5 +217,6 @@ GitLab access is required to download these dependencies.
 This environment has been tested with the simulated
 Franka Panda. It does not require connecting the physical robot.
 
-Currently, automatic movement tests cover J1 only.
-The remaining joints and GELLO integration are future work.
+Automatic tests cover all seven joints, the gripper and
+the GELLO pipeline. Sending GELLO targets to the Panda is
+future work.
