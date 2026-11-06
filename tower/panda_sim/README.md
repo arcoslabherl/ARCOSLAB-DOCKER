@@ -153,9 +153,10 @@ In another terminal:
     make gello-fake       # no hardware: simulated GELLO motion
 
 The Panda takes the GELLO's pose, so they must match before control
-starts. While disabled, the GELLO terminal shows the difference per
-joint, in degrees. Move the GELLO until it shows `READY to enable`.
-Then:
+starts. While disabled, the GELLO terminal shows how far and which
+way to move each joint that doesn't match yet, for example
+`J2 8 deg, tilt the arm forward`. Follow it until it shows
+`READY to enable`. Then:
 
     make gello-enable     # the Panda follows the GELLO
     make gello-disable    # the Panda brakes and stays where it is

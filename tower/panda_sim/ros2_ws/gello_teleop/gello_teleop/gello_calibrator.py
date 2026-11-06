@@ -3,8 +3,8 @@
 
 Absolute mapping: each joint's target is the GELLO's angle, clipped to the
 Panda's joint limits. Control only starts when the GELLO matches the Panda's
-pose, so the robot doesn't jump. While disabled, the difference is logged to
-guide the operator.
+pose, so the robot doesn't jump. While disabled, it logs how to move each
+joint that doesn't match yet, to guide the operator.
 """
 
 import math
@@ -21,6 +21,18 @@ from std_srvs.srv import SetBool
 
 
 JOINT_NAMES = [f"panda_j{i}" for i in range(7)]
+
+# How to move each GELLO joint to make its angle (grow, shrink). Checked
+# against the URDF. "From above" assumes the upper arm is roughly vertical.
+MOVE_HINTS = [
+    ("counterclockwise from above", "clockwise from above"),
+    ("tilt the arm forward", "tilt the arm backward"),
+    ("counterclockwise from above", "clockwise from above"),
+    ("open the elbow", "close the elbow"),
+    ("clockwise from the elbow", "counterclockwise from the elbow"),
+    ("swing the hand away from the elbow", "swing the hand toward the elbow"),
+    ("clockwise from the wrist", "counterclockwise from the wrist"),
+]
 
 # All tunable values (topics, Panda joint limits, tolerances, timeouts) are
 # ROS parameters, set in config/gello_panda.yaml.
@@ -97,7 +109,7 @@ class GelloCalibrator(Node):
             "enable_tolerance": 0.1,
             "max_sample_change": 0.5,
             "data_timeout": 0.3,
-            "status_interval": 1.0,
+            "status_interval": 0.5,
         }
 
         params = {}
@@ -307,16 +319,20 @@ class GelloCalibrator(Node):
                 )
             return
 
-        differences = self.pose_differences()
-        text = " ".join(
-            f"J{index} {math.degrees(difference):+.1f}"
-            for index, difference in enumerate(differences, start=1)
-        )
-        ready = all(abs(d) <= self.enable_tolerance for d in differences)
-        self.get_logger().info(
-            f"GELLO - Panda (deg): {text} | "
-            f"{'READY to enable' if ready else 'not matching yet'}"
-        )
+        moves = []
+        for index, difference in enumerate(self.pose_differences()):
+            if abs(difference) > self.enable_tolerance:
+                # A positive difference: the GELLO's angle must shrink
+                hint = MOVE_HINTS[index][1 if difference > 0 else 0]
+                moves.append(
+                    f"J{index + 1} {abs(math.degrees(difference)):.0f} deg, "
+                    f"{hint}"
+                )
+
+        if moves:
+            self.get_logger().info(f"Move the GELLO: {' | '.join(moves)}")
+        else:
+            self.get_logger().info("GELLO matches the Panda: READY to enable")
 
 
 def main():

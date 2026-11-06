@@ -58,4 +58,4 @@ gello_calibrator:
     enable_tolerance: 0.1    # rad, largest GELLO-Panda difference to enable
     max_sample_change: 0.5   # rad, a larger GELLO jump disables control
     data_timeout: 0.3        # s, control disables if data stops
-    status_interval: 1.0     # s, how often the status is logged
+    status_interval: 0.5     # s, how often the status is logged
