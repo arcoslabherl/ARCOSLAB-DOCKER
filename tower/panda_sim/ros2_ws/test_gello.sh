@@ -5,11 +5,11 @@ set -eo pipefail
 # ROS 2 Humble
 #
 # Requires, in other terminals:
-#   make sim
+#   make sim-teleop
 #   make gello-fake   (or make gello with the real device)
 #
-# Checks: GELLO data -> recenter -> enable -> target joint states -> disable.
-# Targets are not sent to the robot yet, so the Panda does not move.
+# Checks: GELLO data -> recenter -> enable -> the Panda follows the targets
+# -> disable. The simulated Panda moves during this test.
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -39,7 +39,7 @@ timeout 10 ros2 topic echo --once /gello/joint_states >/dev/null \
 
 echo "Checking Panda state..."
 timeout 10 ros2 topic echo --once /sim_asimilar_01/panda_arm/state >/dev/null \
-    || fail "No Panda state. Is 'make sim' running?"
+    || fail "No Panda state. Is 'make sim-teleop' running?"
 
 # Recalibration requires control to be disabled
 call /gello/enable std_srvs/srv/SetBool "{data: false}" >/dev/null \
@@ -72,6 +72,56 @@ done
 
 enabled=$(timeout 5 ros2 topic echo --once /gello/enabled) || true
 grep -q "data: true" <<< "$enabled" || fail "/gello/enabled is not true."
+
+echo "Checking that the Panda follows the targets..."
+python3 - <<'EOF' || fail "The Panda is not following the targets."
+import sys
+import time
+
+import rclpy
+from impedance_control_msgs.msg import State
+from sensor_msgs.msg import JointState
+
+MAX_ERROR = 0.1    # rad
+DURATION = 6.0     # s
+
+rclpy.init()
+node = rclpy.create_node("test_gello_tracking")
+data = {"target": None, "state": None, "first_target": None, "spread": 0.0}
+
+
+def on_target(msg):
+    target = list(msg.position)
+    if data["first_target"] is None:
+        data["first_target"] = target
+    data["spread"] = max(
+        data["spread"],
+        max(abs(a - b) for a, b in zip(target, data["first_target"])))
+    data["target"] = target
+
+
+def on_state(msg):
+    data["state"] = list(msg.position)
+
+
+node.create_subscription(JointState, "/gello/target_joint_states", on_target, 10)
+node.create_subscription(State, "/sim_asimilar_01/panda_arm/state", on_state, 10)
+
+end = time.monotonic() + DURATION
+while time.monotonic() < end:
+    rclpy.spin_once(node, timeout_sec=0.05)
+
+if data["target"] is None or data["state"] is None:
+    print("  No target or Panda state received.")
+    sys.exit(1)
+
+error = max(abs(a - b) for a, b in zip(data["target"], data["state"]))
+print(f"  Target moved {data['spread']:.3f} rad, tracking error {error:.3f} rad")
+
+node.destroy_node()
+rclpy.try_shutdown()
+sys.exit(0 if error < MAX_ERROR else 1)
+EOF
 
 echo "Disabling..."
 call /gello/enable std_srvs/srv/SetBool "{data: false}" >/dev/null \

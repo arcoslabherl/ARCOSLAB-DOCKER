@@ -23,9 +23,9 @@ gello_driver:
     # Measured on the lab's GELLO with the sim's home pose. J7's offset is
     # 5*pi/4, not a multiple of pi/2: the gripper opens sideways at J7 = 45 deg,
     # like the Panda's hand. 'make gello-offsets' can't produce this value.
-    # In pi/2 units: [4, 2, 3, 0, 4, 2, 2.5]
-    joint_offsets: [6.283185, 3.141593, 4.712389, 0.0, 6.283185, 3.141593, 3.926991]
-    joint_signs: [1, 1, 1, -1, 1, -1, 1]
+    # In pi/2 units: [4, 2, 3, 2, 4, 2, 2.5]
+    joint_offsets: [6.283185, 3.141593, 4.712389, 3.141593, 6.283185, 3.141593, 3.926991]
+    joint_signs: [1, 1, 1, 1, 1, -1, 1]
     gripper_id: 8        # -1 if the GELLO has no gripper trigger
     gripper_open_deg: 198.37
     gripper_closed_deg: 144.84
@@ -45,6 +45,7 @@ gello_calibrator:
     gello_topic: /gello/joint_states
     panda_state_topic: /sim_asimilar_01/panda_arm/state
     target_topic: /gello/target_joint_states
+    posref_topic: /sim_asimilar_01/panda_arm/posref
 
     # Travel allowed from the recenter pose, per joint (deg, symmetric)
     max_joint_displacement_deg: [55.0, 45.0, 80.0, 14.3239, 80.0, 80.0, 270.0]
@@ -65,3 +66,4 @@ gello_calibrator:
     data_timeout: 0.3        # s, control disables if data stops
     panda_stable_time: 0.5   # s, Panda must be still to recenter
     panda_stable_tolerance: 0.01  # rad
+    enable_tolerance: 0.1    # rad, GELLO motion allowed from recenter to enable

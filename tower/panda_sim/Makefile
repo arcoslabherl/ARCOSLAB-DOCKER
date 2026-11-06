@@ -23,7 +23,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-recenter gello-enable gello-disable gello-offsets test-gello stop
+.PHONY: help .pull .build run debug .colcon_build sim sim-teleop jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-recenter gello-enable gello-disable gello-offsets test-gello stop
 
 help:
 	@echo "Available commands:"
@@ -38,6 +38,7 @@ help:
 	@echo "  make test-all-joints  Test all 7 Panda joints"
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
+	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
 	@echo "  make gello          Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
 	@echo "  make gello-recenter Capture GELLO/Panda reference pose"
@@ -142,6 +143,18 @@ help:
 		exit 1; \
 	fi
 
+	@echo "Checking optional RBC launch patch..."
+
+	@if git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_use_rbc.patch" >/dev/null 2>&1; then \
+		echo "Optional RBC launch patch already applied."; \
+	elif git -C $(ROS_SRC)/robot-startup apply --check "$(CURDIR)/patches/sim_launch_use_rbc.patch" >/dev/null 2>&1; then \
+		git -C $(ROS_SRC)/robot-startup apply "$(CURDIR)/patches/sim_launch_use_rbc.patch" && \
+		echo "Optional RBC launch patch applied."; \
+	else \
+		echo "ERROR: Cannot apply optional RBC launch patch."; \
+		exit 1; \
+	fi
+
 	@echo "Simulator repositories downloaded."
 
 .build:
@@ -179,6 +192,9 @@ debug:
 
 sim:
 	$(call exec_session,/ros2_ws/start_sim.sh)
+
+sim-teleop:
+	$(call exec_session,/ros2_ws/start_sim.sh teleop)
 
 jr-init:
 	docker exec -it $(CONTAINER_NAME) bash \

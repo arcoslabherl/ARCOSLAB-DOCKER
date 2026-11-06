@@ -130,9 +130,18 @@ gello_software, or measure them. Hold the GELLO in the Panda pose
 Paste the printed block into the YAML file. The driver refuses
 to start with real hardware until offsets are set.
 
+The tool only finds offsets in steps of 90 degrees. If a servo is
+mounted at another angle, set that offset by hand. The YAML file
+explains the case of J7 on the lab's GELLO.
+
 ### Run
 
-With the simulator running, in another terminal:
+Start the simulator without RBC, because RBC publishes `posref`
+all the time and GELLO would fight with it:
+
+    make sim-teleop
+
+In another terminal:
 
     make gello            # real GELLO
     make gello-fake       # no hardware: simulated GELLO motion
@@ -140,24 +149,28 @@ With the simulator running, in another terminal:
 Then:
 
     make gello-recenter   # capture GELLO/Panda reference pose
-    make gello-enable     # start publishing targets
-    make gello-disable
+    make gello-enable     # the Panda follows the GELLO
+    make gello-disable    # the Panda stops where it is
 
 Topics:
 
 - `/gello/joint_states`: GELLO joint angles (rad)
 - `/gello/gripper`: 0.0 open, 1.0 closed
 - `/gello/target_joint_states`: Panda joint targets
+- `/sim_asimilar_01/panda_arm/posref`: commands to the Panda
 - `/gello/enabled`: control state
 
-Control disables itself if GELLO or Panda data stops for 0.3 s.
+Control disables itself and stops the arm if:
 
-Note: targets are not yet sent to the Panda, so the simulated
-arm does not move. That is the next integration step.
+- GELLO or Panda data stops for 0.3 s
+- another node starts publishing `posref`
+
+Enabling is refused if another node publishes `posref`, or if the
+GELLO moved more than 0.1 rad since `make gello-recenter`.
 
 ### Test
 
-With `make sim` and `make gello-fake` running:
+With `make sim-teleop` and `make gello-fake` running:
 
     make test-gello
 
@@ -170,8 +183,8 @@ Expected result:
 Press Ctrl+C in the terminal running the simulator (and GELLO).
 Closing that terminal also stops everything it started.
 
-`make sim` and `make gello` refuse to start a second copy while
-one is already running.
+`make sim`, `make sim-teleop` and `make gello` refuse to start a
+second copy while one is already running.
 
 To stop the container:
 
@@ -218,5 +231,5 @@ This environment has been tested with the simulated
 Franka Panda. It does not require connecting the physical robot.
 
 Automatic tests cover all seven joints, the gripper and
-the GELLO pipeline. Sending GELLO targets to the Panda is
-future work.
+the GELLO pipeline, including the Panda following the GELLO.
+GELLO does not control the gripper yet.

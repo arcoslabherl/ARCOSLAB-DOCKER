@@ -8,7 +8,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from sensor_msgs.msg import JointState
-from impedance_control_msgs.msg import State
+from impedance_control_msgs.msg import PosRef, State
 from std_msgs.msg import Bool
 from std_srvs.srv import Trigger, SetBool
 
@@ -27,6 +27,7 @@ class GelloCalibrator(Node):
         self.calibrated = False
 
         self.panda_position = None
+        self.panda_commanded = None
         self.panda_time = None
         self.panda_stable_since = None
 
@@ -42,6 +43,10 @@ class GelloCalibrator(Node):
 
         self.target_pub = self.create_publisher(
             JointState, self.target_topic, 10
+        )
+
+        self.posref_pub = self.create_publisher(
+            PosRef, self.posref_topic, 10
         )
 
         self.enabled_pub = self.create_publisher(
@@ -92,6 +97,7 @@ class GelloCalibrator(Node):
             "gello_topic": "/gello/joint_states",
             "panda_state_topic": "/sim_asimilar_01/panda_arm/state",
             "target_topic": "/gello/target_joint_states",
+            "posref_topic": "/sim_asimilar_01/panda_arm/posref",
             # Symmetric travel allowed from the recenter pose, per joint
             "max_joint_displacement_deg":
                 [55.0, 45.0, 80.0, 14.3239, 80.0, 80.0, 270.0],
@@ -111,6 +117,8 @@ class GelloCalibrator(Node):
             "data_timeout": 0.3,
             "panda_stable_time": 0.5,
             "panda_stable_tolerance": 0.01,
+            # GELLO motion allowed between recenter and enable (rad)
+            "enable_tolerance": 0.1,
         }
 
         params = {}
@@ -121,6 +129,8 @@ class GelloCalibrator(Node):
         self.gello_topic = params["gello_topic"]
         self.panda_state_topic = params["panda_state_topic"]
         self.target_topic = params["target_topic"]
+        self.posref_topic = params["posref_topic"]
+        self.enable_tolerance = params["enable_tolerance"]
 
         self.max_displacements = [
             math.radians(value)
@@ -176,7 +186,12 @@ class GelloCalibrator(Node):
             if difference > self.panda_stable_tolerance:
                 self.panda_stable_since = now
 
+        commanded = list(msg.cmdedposition)
+        if len(commanded) != 7 or not all(math.isfinite(x) for x in commanded):
+            commanded = positions
+
         self.panda_position = positions
+        self.panda_commanded = commanded
         self.panda_time = now
 
     def gello_callback(self, msg):
@@ -282,6 +297,25 @@ class GelloCalibrator(Node):
         output.position = targets
 
         self.target_pub.publish(output)
+        self.publish_posref(targets)
+
+    def publish_posref(self, position):
+        command = PosRef()
+        command.position = [float(value) for value in position]
+        self.posref_pub.publish(command)
+
+    def other_commander(self):
+        # count_publishers includes this node's own publisher. Two sources
+        # on posref would fight over the robot's goal.
+        return self.count_publishers(self.posref_topic) > 1
+
+    def disable(self):
+        self.enabled = False
+
+        # The robot keeps moving to the last goal it received, so make it
+        # stop where it is now. Its trajectory generator brakes smoothly.
+        if self.panda_commanded is not None:
+            self.publish_posref(self.panda_commanded)
 
     def data_fresh(self):
         now = time.monotonic()
@@ -328,7 +362,8 @@ class GelloCalibrator(Node):
 
     def enable_callback(self, request, response):
         if not request.data:
-            self.enabled = False
+            if self.enabled:
+                self.disable()
 
             response.success = True
             response.message = "GELLO control disabled."
@@ -344,6 +379,29 @@ class GelloCalibrator(Node):
             response.message = "GELLO or Panda data unavailable."
             return response
 
+        if self.other_commander():
+            response.success = False
+            response.message = (
+                f"Another node publishes {self.posref_topic}. "
+                "Start the simulator with 'make sim-teleop' (no RBC)."
+            )
+            return response
+
+        # The robot would jump to the GELLO's new pose: recenter first.
+        moved = max(
+            abs(current - initial)
+            for current, initial in zip(
+                self.gello_unwrapped, self.gello_initial
+            )
+        )
+        if moved > self.enable_tolerance:
+            response.success = False
+            response.message = (
+                f"GELLO moved {math.degrees(moved):.1f} deg since recenter. "
+                "Recenter again."
+            )
+            return response
+
         self.enabled = True
 
         response.success = True
@@ -352,11 +410,18 @@ class GelloCalibrator(Node):
 
     def check_safety(self):
         if self.enabled and not self.data_fresh():
-            self.enabled = False
+            self.disable()
             self.calibrated = False
 
             self.get_logger().warning(
                 "Communication timeout. GELLO disabled."
+            )
+
+        if self.enabled and self.other_commander():
+            self.disable()
+
+            self.get_logger().error(
+                f"Another node publishes {self.posref_topic}. GELLO disabled."
             )
 
         status = Bool()
