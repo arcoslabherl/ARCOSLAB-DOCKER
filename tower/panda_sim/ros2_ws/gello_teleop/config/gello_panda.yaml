@@ -19,11 +19,16 @@ gello_driver:
     # joint_signs, gripper_config = (id, open_deg, closed_deg)).
     #
     # Until joint_offsets are set, only the fake backend starts.
-    # joint_offsets: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-    joint_signs: [1, 1, 1, 1, 1, 1, 1]
+    #
+    # Measured on the lab's GELLO with the sim's home pose. J7's offset is
+    # 5*pi/4, not a multiple of pi/2: the gripper opens sideways at J7 = 45 deg,
+    # like the Panda's hand. 'make gello-offsets' can't produce this value.
+    # In pi/2 units: [4, 2, 3, 0, 4, 2, 2.5]
+    joint_offsets: [6.283185, 3.141593, 4.712389, 0.0, 6.283185, 3.141593, 3.926991]
+    joint_signs: [1, 1, 1, -1, 1, -1, 1]
     gripper_id: 8        # -1 if the GELLO has no gripper trigger
-    gripper_open_deg: 0.0
-    gripper_closed_deg: 0.0
+    gripper_open_deg: 198.37
+    gripper_closed_deg: 144.84
     # ---------------------------------------------------------------------
 
     # Exponential smoothing (1.0 = none), same as gello_software
