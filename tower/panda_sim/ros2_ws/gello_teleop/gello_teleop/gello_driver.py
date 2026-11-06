@@ -9,6 +9,11 @@ Conversion (same as gello_software's DynamixelRobot):
   joint   = sign * (raw - offset)
   gripper = clamp((raw - open) / (closed - open), 0, 1)
 followed by exponential smoothing.
+
+A servo loses its turn count when it powers up, so its raw angle can come
+back off by 360 degrees. Each joint is shifted by whole turns to the value
+closest to reference_pose on the first read, and to the last known value when
+reads resume after an error.
 """
 
 import math
@@ -43,6 +48,8 @@ class GelloDriver(Node):
         self.declare_parameter("joint_ids", list(range(1, NUM_JOINTS + 1)))
         self.declare_parameter("joint_offsets", Parameter.Type.DOUBLE_ARRAY)
         self.declare_parameter("joint_signs", [1] * NUM_JOINTS)
+        self.declare_parameter(
+            "reference_pose", [0.0, 0.0, 0.0, -1.57, 0.0, 1.87, 0.0])
         self.declare_parameter("gripper_id", 8)
         self.declare_parameter("gripper_open_deg", 0.0)
         self.declare_parameter("gripper_closed_deg", 0.0)
@@ -57,6 +64,7 @@ class GelloDriver(Node):
         port = self.get_parameter("port").value
         joint_ids = list(self.get_parameter("joint_ids").value)
         signs = list(self.get_parameter("joint_signs").value)
+        reference_pose = list(self.get_parameter("reference_pose").value)
         gripper_id = self.get_parameter("gripper_id").value
         self.alpha = self.get_parameter("smoothing_alpha").value
 
@@ -67,6 +75,9 @@ class GelloDriver(Node):
 
         if len(joint_ids) != NUM_JOINTS or len(signs) != NUM_JOINTS:
             raise ValueError("joint_ids and joint_signs need 7 values")
+
+        if len(reference_pose) != NUM_JOINTS:
+            raise ValueError("reference_pose needs 7 values")
 
         if any(sign not in (-1, 1) for sign in signs):
             raise ValueError("joint_signs must be 1 or -1")
@@ -88,6 +99,8 @@ class GelloDriver(Node):
 
         self.offsets = offsets
         self.signs = signs
+        self.reference_pose = reference_pose
+        self.turns = None
 
         self.has_gripper = gripper_id >= 0
         if self.has_gripper:
@@ -148,9 +161,26 @@ class GelloDriver(Node):
         self.get_logger().info("GELLO driver ready.")
 
     def convert(self, raw):
-        values = [
+        joints = [
             sign * (angle - offset)
             for angle, offset, sign in zip(raw, self.offsets, self.signs)
+        ]
+
+        if self.turns is None:
+            reference = self.last_values or self.reference_pose
+            self.turns = [
+                round((target - joint) / math.tau)
+                for target, joint in zip(reference, joints)
+            ]
+            for index, turns in enumerate(self.turns, start=1):
+                if turns != 0:
+                    self.get_logger().info(
+                        f"J{index}: shifted {turns:+d} turn(s) from its raw "
+                        "servo angle")
+
+        values = [
+            joint + turns * math.tau
+            for joint, turns in zip(joints, self.turns)
         ]
 
         if self.has_gripper:
@@ -177,6 +207,8 @@ class GelloDriver(Node):
                 raw = self.backend.read()
             except (IOError, OSError) as error:
                 # Stop publishing: the calibrator disables control on timeout
+                # The servos may have rebooted: find their turns again.
+                self.turns = None
                 now = time.monotonic()
                 if now - last_error_log >= READ_ERROR_LOG_INTERVAL:
                     self.get_logger().warning(f"GELLO read failed: {error}")

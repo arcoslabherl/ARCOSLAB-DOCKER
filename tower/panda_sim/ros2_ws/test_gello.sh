@@ -6,10 +6,10 @@ set -eo pipefail
 #
 # Requires, in other terminals:
 #   make sim-teleop
-#   make gello-fake   (or make gello with the real device)
+#   make gello-fake   (with the real device, first match the Panda's pose)
 #
-# Checks: GELLO data -> recenter -> enable -> the Panda follows the targets
-# -> disable. The simulated Panda moves during this test.
+# Checks: GELLO data -> enable -> the Panda follows the targets -> disable.
+# The simulated Panda moves during this test.
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -41,26 +41,21 @@ echo "Checking Panda state..."
 timeout 10 ros2 topic echo --once /sim_asimilar_01/panda_arm/state >/dev/null \
     || fail "No Panda state. Is 'make sim-teleop' running?"
 
-# Recalibration requires control to be disabled
 call /gello/enable std_srvs/srv/SetBool "{data: false}" >/dev/null \
     || fail "GELLO calibrator not responding."
 
-echo "Recentering..."
-RECENTERED=false
+echo "Enabling..."
+ENABLED=false
 for attempt in $(seq 1 10); do
-    output=$(call /gello/recenter std_srvs/srv/Trigger) || true
+    output=$(call /gello/enable std_srvs/srv/SetBool "{data: true}") || true
     if grep -q "success=True" <<< "$output"; then
-        RECENTERED=true
+        ENABLED=true
         break
     fi
-    # Panda may still be settling
+    # The Panda may still be going home
     sleep 1
 done
-[[ "$RECENTERED" == true ]] || fail "Recenter failed: ${output##*response:}"
-
-echo "Enabling..."
-output=$(call /gello/enable std_srvs/srv/SetBool "{data: true}") || true
-grep -q "success=True" <<< "$output" || fail "Enable failed: ${output##*response:}"
+[[ "$ENABLED" == true ]] || fail "Enable failed: ${output##*response:}"
 
 echo "Checking target joint states..."
 target=$(timeout 10 ros2 topic echo --once /gello/target_joint_states) \

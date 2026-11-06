@@ -28,7 +28,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim sim-teleop jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-recenter gello-enable gello-disable gello-offsets test-gello stop
+.PHONY: help .pull .build run debug .colcon_build sim sim-teleop jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello stop
 
 help:
 	@echo "Available commands:"
@@ -46,7 +46,6 @@ help:
 	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
 	@echo "  make gello          Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
-	@echo "  make gello-recenter Capture GELLO/Panda reference pose"
 	@echo "  make gello-enable   Enable GELLO control"
 	@echo "  make gello-disable  Disable GELLO control"
 	@echo "  make gello-offsets GELLO_SIGNS=\"1 -1 ...\"  Calibrate a GELLO unit"
@@ -238,10 +237,6 @@ gello:
 
 gello-fake:
 	$(call exec_session,/ros2_ws/start_gello.sh fake)
-
-gello-recenter:
-	docker exec -it $(CONTAINER_NAME) bash -c \
-		"$(ROS_SOURCE) && ros2 service call /gello/recenter std_srvs/srv/Trigger"
 
 gello-enable:
 	docker exec -it $(CONTAINER_NAME) bash -c \

@@ -26,7 +26,11 @@ gello_driver:
     # In pi/2 units: [4, 2, 3, 2, 4, 2, 2.5]
     joint_offsets: [6.283185, 3.141593, 4.712389, 3.141593, 6.283185, 3.141593, 3.926991]
     joint_signs: [1, 1, 1, 1, 1, -1, 1]
-    gripper_id: 8        # -1 if the GELLO has no gripper trigger
+    # Servos lose their turn count on power-up. Each joint is shifted by whole
+    # turns to the value closest to this pose: the center of the Panda's range,
+    # so the result is right anywhere in the robot's range.
+    reference_pose: [0.0, 0.0, 0.0, -1.57, 0.0, 1.87, 0.0]
+    gripper_id: 8       # -1 if the GELLO has no gripper trigger
     gripper_open_deg: 198.37
     gripper_closed_deg: 144.84
     # ---------------------------------------------------------------------
@@ -47,23 +51,11 @@ gello_calibrator:
     target_topic: /gello/target_joint_states
     posref_topic: /sim_asimilar_01/panda_arm/posref
 
-    # Travel allowed from the recenter pose, per joint (deg, symmetric)
-    max_joint_displacement_deg: [55.0, 45.0, 80.0, 14.3239, 80.0, 80.0, 270.0]
-
-    # 1 or -1 per joint; flip a joint that moves opposite to the GELLO.
-    # NOTE: the previous version reversed J7. Verify on hardware.
-    joint_directions: [1, 1, 1, 1, 1, 1, 1]
-
     # Franka Panda joint position limits (rad), J1..J7
     panda_joint_lower: [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
     panda_joint_upper: [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
 
-    # Console diagnostic for one joint (1-7), 0 disables
-    debug_joint: 7
-    debug_interval: 1.0      # s
-
-    max_sample_change: 0.5   # rad, larger GELLO jumps are rejected
+    enable_tolerance: 0.1    # rad, largest GELLO-Panda difference to enable
+    max_sample_change: 0.5   # rad, a larger GELLO jump disables control
     data_timeout: 0.3        # s, control disables if data stops
-    panda_stable_time: 0.5   # s, Panda must be still to recenter
-    panda_stable_tolerance: 0.01  # rad
-    enable_tolerance: 0.1    # rad, GELLO motion allowed from recenter to enable
+    status_interval: 1.0     # s, how often the status is logged

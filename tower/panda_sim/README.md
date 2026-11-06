@@ -152,11 +152,16 @@ In another terminal:
     make gello            # real GELLO
     make gello-fake       # no hardware: simulated GELLO motion
 
+The Panda takes the GELLO's pose, so they must match before control
+starts. While disabled, the GELLO terminal shows the difference per
+joint, in degrees. Move the GELLO until it shows `READY to enable`.
 Then:
 
-    make gello-recenter   # capture GELLO/Panda reference pose
     make gello-enable     # the Panda follows the GELLO
-    make gello-disable    # the Panda stops where it is
+    make gello-disable    # the Panda brakes and stays where it is
+
+After disabling, or if control stops by itself, match the Panda's
+pose again before enabling.
 
 Topics:
 
@@ -170,9 +175,10 @@ Control disables itself and stops the arm if:
 
 - GELLO or Panda data stops for 0.3 s
 - another node starts publishing `posref`
+- a GELLO joint jumps more than 0.5 rad between two readings
 
-Enabling is refused if another node publishes `posref`, or if the
-GELLO moved more than 0.1 rad since `make gello-recenter`.
+Enabling is refused if another node publishes `posref`, or if any
+joint differs from the Panda by more than 0.1 rad (5.7 degrees).
 
 ### Test
 
