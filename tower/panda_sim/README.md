@@ -141,6 +141,12 @@ all the time and GELLO would fight with it:
 
     make sim-teleop
 
+It uses the same arm limits as the real robot's driver (0.8 rad/s,
+1.0 rad/s^2), so the response matches what the real robot would
+have. To try other limits in the simulator only:
+
+    make sim-teleop ARM_VEL=1.5 ARM_ACC=5
+
 In another terminal:
 
     make gello            # real GELLO

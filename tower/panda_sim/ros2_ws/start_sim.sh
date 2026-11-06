@@ -4,11 +4,14 @@ set -e
 # ARCoS-Lab - Franka Panda Simulator
 # ROS 2 Humble
 #
-# Usage: start_sim.sh [rbc|teleop]
+# Usage: start_sim.sh [rbc|teleop] [max velocity] [max acceleration]
 #   rbc     RBC and a Joint Reacher (default)
-#   teleop  no RBC: GELLO is the only source of arm commands
+#   teleop  no RBC: GELLO is the only source of arm commands. The limits
+#           default to the ones in the real robot's driver.
 
 MODE="${1:-rbc}"
+ARM_VEL="${2:-0.8}"
+ARM_ACC="${3:-1.0}"
 NAMESPACE="/sim_asimilar_01"
 
 source /opt/ros/humble/setup.bash
@@ -45,14 +48,20 @@ wait_for_service() {
 }
 
 if [[ "$MODE" == "teleop" ]]; then
-    USE_RBC=false
+    LAUNCH_ARGS=(
+        use_rbc:=false
+        arm_max_velocity:="$ARM_VEL"
+        arm_max_acceleration:="$ARM_ACC"
+    )
+
+    echo "Arm limits: ${ARM_VEL} rad/s, ${ARM_ACC} rad/s^2"
 
     # RBC is what normally sends the arm home; the simulated arm starts at
     # all zeros. Simulator only: the real robot must never get this jump.
     (
         wait_for_service "${NAMESPACE}/panda_arm/control" || exit 1
 
-        ros2 topic pub --times 30 --rate 10 \
+        ros2 topic pub --times 50 --rate 10 \
             "${NAMESPACE}/panda_arm/posref" \
             impedance_control_msgs/msg/PosRef \
             "{position: [0.0, 0.0, 0.0, -1.57, 0.0, 1.57, 0.71]}" >/dev/null
@@ -60,7 +69,7 @@ if [[ "$MODE" == "teleop" ]]; then
         echo "Panda at home pose. Ready for GELLO."
     ) &
 else
-    USE_RBC=true
+    LAUNCH_ARGS=(use_rbc:=true)
 
     # Initialize Joint Reacher when RBC becomes available
     (
@@ -79,4 +88,4 @@ trap 'kill "$SETUP_PID" 2>/dev/null || true' EXIT
 ros2 launch \
     arcos-lab-asimilar-robot-startup \
     arcos-lab-asimilar-robot-startup-sim.launch.py \
-    use_rbc:="$USE_RBC"
+    "${LAUNCH_ARGS[@]}"

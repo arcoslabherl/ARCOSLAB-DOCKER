@@ -12,6 +12,11 @@ ROS_SRC = $(ROS_WS)/src
 GELLO_PORT ?= /dev/ttyUSB0
 GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_PORT),)
 
+# Arm limits of 'make sim-teleop' (rad/s, rad/s^2). The defaults match the
+# real robot's driver, so the simulator shows the response it would have.
+ARM_VEL ?= 0.8
+ARM_ACC ?= 1.0
+
 ROS_SOURCE = source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
 
 # Run a long-lived script (sim, GELLO) in the container. 'docker exec'
@@ -155,6 +160,18 @@ help:
 		exit 1; \
 	fi
 
+	@echo "Checking arm limits launch patch..."
+
+	@if git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_ruckig_limits.patch" >/dev/null 2>&1; then \
+		echo "Arm limits launch patch already applied."; \
+	elif git -C $(ROS_SRC)/robot-startup apply --check "$(CURDIR)/patches/sim_launch_ruckig_limits.patch" >/dev/null 2>&1; then \
+		git -C $(ROS_SRC)/robot-startup apply "$(CURDIR)/patches/sim_launch_ruckig_limits.patch" && \
+		echo "Arm limits launch patch applied."; \
+	else \
+		echo "ERROR: Cannot apply arm limits launch patch."; \
+		exit 1; \
+	fi
+
 	@echo "Simulator repositories downloaded."
 
 .build:
@@ -194,7 +211,7 @@ sim:
 	$(call exec_session,/ros2_ws/start_sim.sh)
 
 sim-teleop:
-	$(call exec_session,/ros2_ws/start_sim.sh teleop)
+	$(call exec_session,/ros2_ws/start_sim.sh teleop $(ARM_VEL) $(ARM_ACC))
 
 jr-init:
 	docker exec -it $(CONTAINER_NAME) bash \
