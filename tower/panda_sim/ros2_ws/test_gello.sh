@@ -8,7 +8,8 @@ set -eo pipefail
 #   make sim-teleop
 #   make gello-fake   (with the real device, first match the Panda's pose)
 #
-# Checks: GELLO data -> enable -> the Panda follows the targets -> disable.
+# Checks: GELLO data -> enable -> the Panda and its gripper follow the
+# GELLO -> disable.
 # The simulated Panda moves during this test.
 
 source /opt/ros/humble/setup.bash
@@ -68,21 +69,26 @@ done
 enabled=$(timeout 5 ros2 topic echo --once /gello/enabled) || true
 grep -q "data: true" <<< "$enabled" || fail "/gello/enabled is not true."
 
-echo "Checking that the Panda follows the targets..."
-python3 - <<'EOF' || fail "The Panda is not following the targets."
+echo "Checking that the Panda and its gripper follow the GELLO..."
+python3 - <<'EOF' || fail "The Panda or its gripper is not following the GELLO."
 import sys
 import time
 
 import rclpy
 from impedance_control_msgs.msg import State
 from sensor_msgs.msg import JointState
+from std_msgs.msg import Float32
 
-MAX_ERROR = 0.1    # rad
-DURATION = 6.0     # s
+MAX_ERROR = 0.1            # rad
+GRIPPER_MAX_WIDTH = 0.08   # m, as in gello_panda.yaml
+GRIPPER_MAX_ERROR = 0.02   # m: 5 mm steps, 5 mm 'move' tolerance, and lag
+GRIPPER_MIN_TRAVEL = 0.02  # m, the fake trigger moves more than this
+DURATION = 6.0             # s
 
 rclpy.init()
 node = rclpy.create_node("test_gello_tracking")
-data = {"target": None, "state": None, "first_target": None, "spread": 0.0}
+data = {"target": None, "state": None, "first_target": None, "spread": 0.0,
+        "trigger": None, "width": None, "widths": []}
 
 
 def on_target(msg):
@@ -99,8 +105,21 @@ def on_state(msg):
     data["state"] = list(msg.position)
 
 
+def on_trigger(msg):
+    data["trigger"] = msg.data
+
+
+def on_gripper(msg):
+    if msg.position:
+        data["width"] = msg.position[0]
+        data["widths"].append(msg.position[0])
+
+
 node.create_subscription(JointState, "/gello/target_joint_states", on_target, 10)
 node.create_subscription(State, "/sim_asimilar_01/panda_arm/state", on_state, 10)
+node.create_subscription(Float32, "/gello/gripper", on_trigger, 10)
+node.create_subscription(
+    State, "/sim_asimilar_01/panda_arm/gripper/state", on_gripper, 10)
 
 end = time.monotonic() + DURATION
 while time.monotonic() < end:
@@ -112,10 +131,24 @@ if data["target"] is None or data["state"] is None:
 
 error = max(abs(a - b) for a, b in zip(data["target"], data["state"]))
 print(f"  Target moved {data['spread']:.3f} rad, tracking error {error:.3f} rad")
+ok = error < MAX_ERROR
+
+if data["trigger"] is None:
+    print("  No /gello/gripper data (GELLO without trigger?): gripper skipped.")
+elif data["width"] is None:
+    print("  No gripper state received.")
+    ok = False
+else:
+    goal = GRIPPER_MAX_WIDTH * (1.0 - data["trigger"])
+    gripper_error = abs(goal - data["width"])
+    travel = max(data["widths"]) - min(data["widths"])
+    print(f"  Gripper moved {travel * 1000:.0f} mm, "
+          f"tracking error {gripper_error * 1000:.0f} mm")
+    ok = ok and gripper_error < GRIPPER_MAX_ERROR and travel > GRIPPER_MIN_TRAVEL
 
 node.destroy_node()
 rclpy.try_shutdown()
-sys.exit(0 if error < MAX_ERROR else 1)
+sys.exit(0 if ok else 1)
 EOF
 
 echo "Disabling..."

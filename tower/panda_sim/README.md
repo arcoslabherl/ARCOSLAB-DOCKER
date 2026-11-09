@@ -164,6 +164,10 @@ way to move each joint that doesn't match yet, for example
 After disabling, or if control stops by itself, match the Panda's
 pose again before enabling.
 
+While enabled, the gripper follows the GELLO's trigger: released is
+open (0.08 m), pressed is closed. Each gripper move must finish
+before the next one starts, so it follows in steps of 5 mm or more.
+
 Topics:
 
 - `/gello/joint_states`: GELLO joint angles (rad)
@@ -171,6 +175,8 @@ Topics:
 - `/gello/target_joint_states`: Panda joint targets
 - `/sim_asimilar_01/panda_arm/posref`: commands to the Panda
 - `/gello/enabled`: control state
+- `/sim_asimilar_01/panda_arm/gripper`: gripper service, called
+  with `move`
 
 Control disables itself and stops the arm if:
 
@@ -244,5 +250,5 @@ This environment has been tested with the simulated
 Franka Panda. It does not require connecting the physical robot.
 
 Automatic tests cover all seven joints, the gripper and
-the GELLO pipeline, including the Panda following the GELLO.
-GELLO does not control the gripper yet.
+the GELLO pipeline, including the Panda and its gripper
+following the GELLO.

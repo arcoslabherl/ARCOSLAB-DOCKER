@@ -59,3 +59,15 @@ gello_calibrator:
     max_sample_change: 0.5   # rad, a larger GELLO jump disables control
     data_timeout: 0.3        # s, control disables if data stops
     status_interval: 0.5     # s, how often the status is logged
+
+    # Gripper: while enabled, the trigger (0 open .. 1 closed) commands a
+    # width of gripper_max_width .. 0 with 'move'. The service blocks until
+    # the move ends, so one call at a time, and only when the width changed
+    # by gripper_min_change (the sim's 'move' stops within 5 mm anyway).
+    # Set gripper_service to "" to leave the gripper alone.
+    gripper_topic: /gello/gripper
+    gripper_service: /sim_asimilar_01/panda_arm/gripper
+    gripper_max_width: 0.08     # m, fully open
+    gripper_min_change: 0.005   # m
+    gripper_speed: 0.05         # m/s
+    gripper_call_timeout: 5.0   # s, then a stuck call is given up

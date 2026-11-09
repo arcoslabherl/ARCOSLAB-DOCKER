@@ -5,6 +5,10 @@ Absolute mapping: each joint's target is the GELLO's angle, clipped to the
 Panda's joint limits. Control only starts when the GELLO matches the Panda's
 pose, so the robot doesn't jump. While disabled, it logs how to move each
 joint that doesn't match yet, to guide the operator.
+
+While enabled, the gripper follows the GELLO's trigger (0 open, 1 closed) as a
+width command. The gripper service blocks until the move ends and queues
+calls, so one call is sent at a time, and only when the width changed enough.
 """
 
 import math
@@ -16,7 +20,8 @@ from rclpy.node import Node
 
 from sensor_msgs.msg import JointState
 from impedance_control_msgs.msg import PosRef, State
-from std_msgs.msg import Bool
+from panda_topics_msgs_srvs.srv import Pandagripper
+from std_msgs.msg import Bool, Float32
 from std_srvs.srv import SetBool
 
 
@@ -50,6 +55,13 @@ class GelloCalibrator(Node):
 
         self.gello_position = None
         self.gello_time = None
+
+        self.gripper_value = None
+        self.gripper_time = None
+        self.gripper_width_sent = None
+        self.gripper_future = None
+        self.gripper_call_time = None
+        self.gripper_warned = False
 
         self.load_parameters()
 
@@ -85,6 +97,18 @@ class GelloCalibrator(Node):
             self.enable_callback,
         )
 
+        if self.gripper_service:
+            self.create_subscription(
+                Float32,
+                self.gripper_topic,
+                self.gripper_callback,
+                10,
+            )
+
+            self.gripper_client = self.create_client(
+                Pandagripper, self.gripper_service
+            )
+
         self.create_timer(0.05, self.check_safety)
         self.create_timer(self.status_interval, self.log_status)
 
@@ -110,6 +134,13 @@ class GelloCalibrator(Node):
             "max_sample_change": 0.5,
             "data_timeout": 0.3,
             "status_interval": 0.5,
+            # Empty gripper_service: the gripper isn't controlled
+            "gripper_topic": "/gello/gripper",
+            "gripper_service": "/sim_asimilar_01/panda_arm/gripper",
+            "gripper_max_width": 0.08,
+            "gripper_min_change": 0.005,
+            "gripper_speed": 0.05,
+            "gripper_call_timeout": 5.0,
         }
 
         params = {}
@@ -127,6 +158,12 @@ class GelloCalibrator(Node):
         self.max_sample_change = params["max_sample_change"]
         self.data_timeout = params["data_timeout"]
         self.status_interval = params["status_interval"]
+        self.gripper_topic = params["gripper_topic"]
+        self.gripper_service = params["gripper_service"]
+        self.gripper_max_width = params["gripper_max_width"]
+        self.gripper_min_change = params["gripper_min_change"]
+        self.gripper_speed = params["gripper_speed"]
+        self.gripper_call_timeout = params["gripper_call_timeout"]
 
         for name in ("panda_joint_lower", "panda_joint_upper"):
             if len(params[name]) != len(JOINT_NAMES):
@@ -138,6 +175,11 @@ class GelloCalibrator(Node):
 
         if self.enable_tolerance <= 0.0:
             raise ValueError("enable_tolerance must be positive")
+
+        for name in ("gripper_max_width", "gripper_min_change",
+                     "gripper_speed", "gripper_call_timeout"):
+            if params[name] <= 0.0:
+                raise ValueError(f"{name} must be positive")
 
     def panda_callback(self, msg):
         if len(msg.position) != 7:
@@ -194,6 +236,72 @@ class GelloCalibrator(Node):
 
         self.target_pub.publish(output)
         self.publish_posref(targets)
+
+    def gripper_callback(self, msg):
+        if not math.isfinite(msg.data):
+            return
+
+        self.gripper_value = min(max(float(msg.data), 0.0), 1.0)
+        self.gripper_time = time.monotonic()
+
+    def update_gripper(self):
+        if not self.gripper_service:
+            return
+
+        now = time.monotonic()
+
+        if self.gripper_future is not None:
+            if self.gripper_future.done():
+                self.gripper_done(self.gripper_future)
+            elif now - self.gripper_call_time > self.gripper_call_timeout:
+                # Never answered (gripper node gone?). Allow a new call.
+                self.get_logger().warning("Gripper command timed out.")
+                self.gripper_future = None
+            else:
+                return
+
+        if not self.enabled or self.gripper_time is None:
+            return
+
+        if now - self.gripper_time >= self.data_timeout:
+            return
+
+        if not self.gripper_client.service_is_ready():
+            if not self.gripper_warned:
+                self.get_logger().warning(
+                    f"Gripper service {self.gripper_service} unavailable."
+                )
+                self.gripper_warned = True
+            return
+
+        self.gripper_warned = False
+
+        width = self.gripper_max_width * (1.0 - self.gripper_value)
+
+        if (self.gripper_width_sent is not None
+                and abs(width - self.gripper_width_sent)
+                < self.gripper_min_change):
+            return
+
+        request = Pandagripper.Request()
+        request.cmd = "move"
+        request.width = float(width)
+        request.speed = float(self.gripper_speed)
+
+        self.gripper_future = self.gripper_client.call_async(request)
+        self.gripper_call_time = now
+        self.gripper_width_sent = width
+
+    def gripper_done(self, future):
+        self.gripper_future = None
+
+        # Not retried: on the real Panda 'move' fails when the fingers hit an
+        # object, and retrying would repeat it. The next trigger change sends
+        # a new command.
+        response = future.result()
+        if response is None or response.result != "Success":
+            result = "no response" if response is None else response.result
+            self.get_logger().warning(f"Gripper move failed: {result}")
 
     def clip_to_limits(self, positions):
         return [
@@ -277,6 +385,8 @@ class GelloCalibrator(Node):
             return response
 
         self.enabled = True
+        # The gripper may have moved while disabled: command it again
+        self.gripper_width_sent = None
 
         response.success = True
         response.message = "GELLO control enabled."
@@ -300,6 +410,8 @@ class GelloCalibrator(Node):
         status = Bool()
         status.data = self.enabled
         self.enabled_pub.publish(status)
+
+        self.update_gripper()
 
     def log_status(self):
         if not self.data_fresh():

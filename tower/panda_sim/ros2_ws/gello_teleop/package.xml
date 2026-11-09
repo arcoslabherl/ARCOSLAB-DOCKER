@@ -14,6 +14,7 @@
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>std_srvs</exec_depend>
   <exec_depend>impedance_control_msgs</exec_depend>
+  <exec_depend>panda_topics_msgs_srvs</exec_depend>
   <!-- dynamixel-sdk (pip, pinned) and python3-serial are installed by the Dockerfile -->
 
   <export>
