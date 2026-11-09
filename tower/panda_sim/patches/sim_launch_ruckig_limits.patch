@@ -1,0 +1,48 @@
+diff --git a/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py b/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
+index 9c14a45..73d636a 100644
+--- a/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
++++ b/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
+@@ -6,7 +6,7 @@ from launch_ros.actions import Node
+ from launch.actions import DeclareLaunchArgument
+ from launch.conditions import IfCondition
+ from launch.launch_description_sources import PythonLaunchDescriptionSource
+-from launch.substitutions import LaunchConfiguration
++from launch.substitutions import LaunchConfiguration, PythonExpression
+ from ament_index_python.packages import get_package_share_directory
+ import subprocess
+ import sys
+@@ -70,6 +70,18 @@ def generate_launch_description():
+             'use_rbc',
+             default_value='true',
+             description='Start RBC. Without it, another node commands the arm'),
++        DeclareLaunchArgument(
++            'arm_max_velocity',
++            default_value='1.0',
++            description='Arm ruckig velocity limit, all joints (rad/s)'),
++        DeclareLaunchArgument(
++            'arm_max_acceleration',
++            default_value='2.0',
++            description='Arm ruckig acceleration limit, all joints (rad/s^2)'),
++        DeclareLaunchArgument(
++            'arm_max_jerk',
++            default_value='50.0',
++            description='Arm ruckig jerk limit, all joints (rad/s^3)'),
+         # Node(
+         #     package='tf2_ros',
+         #     executable="static_transform_publisher",
+@@ -143,9 +155,12 @@ def generate_launch_description():
+                  'effort_ref_max': [10.0] * panda_num_joints,
+                  'ctrl_viscous_friction': [0.5] * panda_num_joints,
+                  'use_ruckig': True,
+-                 'max_velocity': [1.0]*panda_num_joints,
+-                 'max_acceleration': [2.0]*panda_num_joints,
+-                 'max_jerk': [50.0]*panda_num_joints,
++                 'max_velocity': PythonExpression(
++                     ['[float(', LaunchConfiguration('arm_max_velocity'), ')]*', str(panda_num_joints)]),
++                 'max_acceleration': PythonExpression(
++                     ['[float(', LaunchConfiguration('arm_max_acceleration'), ')]*', str(panda_num_joints)]),
++                 'max_jerk': PythonExpression(
++                     ['[float(', LaunchConfiguration('arm_max_jerk'), ')]*', str(panda_num_joints)]),
+                  'sim_pandagripper': True,
+                  'gripper_name': gripper_name},
+ 
