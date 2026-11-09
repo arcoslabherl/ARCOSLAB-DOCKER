@@ -12,10 +12,12 @@ ROS_SRC = $(ROS_WS)/src
 GELLO_PORT ?= /dev/ttyUSB0
 GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_PORT),)
 
-# Arm limits of 'make sim-teleop' (rad/s, rad/s^2). The defaults match the
-# real robot's driver, so the simulator shows the response it would have.
+# Arm limits of 'make sim-teleop' (rad/s, rad/s^2, rad/s^3). The defaults
+# match the real robot's driver, so the simulator shows the response it
+# would have.
 ARM_VEL ?= 0.8
 ARM_ACC ?= 1.0
+ARM_JERK ?= 50
 
 ROS_SOURCE = source /opt/ros/humble/setup.bash && source /ros2_ws/install/setup.bash
 
@@ -28,7 +30,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim sim-teleop jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello stop
+.PHONY: help .pull .build run debug .colcon_build sim sim-teleop jr-init test-j1 test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
@@ -50,6 +52,9 @@ help:
 	@echo "  make gello-disable  Disable GELLO control"
 	@echo "  make gello-offsets GELLO_SIGNS=\"1 -1 ...\"  Calibrate a GELLO unit"
 	@echo "  make test-gello     Test the GELLO pipeline (needs sim + gello)"
+	@echo "  make latency-record REC=name [DURATION=60]  Record a GELLO session"
+	@echo "  make latency-replay REC=name RUN=name       Replay it to the sim"
+	@echo "  make latency-analyze FILES=\"name ...\"      Delay, lag and overshoot"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -225,7 +230,7 @@ sim:
 	$(call exec_session,/ros2_ws/start_sim.sh)
 
 sim-teleop:
-	$(call exec_session,/ros2_ws/start_sim.sh teleop $(ARM_VEL) $(ARM_ACC))
+	$(call exec_session,/ros2_ws/start_sim.sh teleop $(ARM_VEL) $(ARM_ACC) $(ARM_JERK))
 
 jr-init:
 	docker exec -it $(CONTAINER_NAME) bash \
@@ -272,6 +277,23 @@ gello-offsets:
 test-gello:
 	docker exec -it $(CONTAINER_NAME) bash \
 		/ros2_ws/test_gello.sh
+
+# Latency measurements (tools/latency.py). Files go to ros2_ws/tools/data/.
+LATENCY = docker exec -it -e HOST_UID=$(shell id -u) -e HOST_GID=$(shell id -g) \
+	$(CONTAINER_NAME) bash -c "$(ROS_SOURCE) && python3 /ros2_ws/tools/latency.py
+DURATION ?= 60
+
+latency-record:
+	@test -n "$(REC)" || { echo 'Usage: make latency-record REC=name [DURATION=60]'; exit 1; }
+	$(LATENCY) record $(REC) --duration $(DURATION)"
+
+latency-replay:
+	@test -n "$(REC)" -a -n "$(RUN)" || { echo 'Usage: make latency-replay REC=name RUN=name'; exit 1; }
+	$(LATENCY) replay $(REC) $(RUN)"
+
+latency-analyze:
+	@test -n "$(FILES)" || { echo 'Usage: make latency-analyze FILES="name ..."'; exit 1; }
+	$(LATENCY) analyze $(FILES)"
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)

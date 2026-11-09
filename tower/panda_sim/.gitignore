@@ -3,6 +3,9 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
+# Latency recordings and runs (tools/latency.py)
+ros2_ws/tools/data/
+
 # External GitLab repositories
 ros2_ws/src/
 

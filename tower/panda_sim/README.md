@@ -142,10 +142,14 @@ all the time and GELLO would fight with it:
     make sim-teleop
 
 It uses the same arm limits as the real robot's driver (0.8 rad/s,
-1.0 rad/s^2), so the response matches what the real robot would
-have. To try other limits in the simulator only:
+1.0 rad/s^2, 50 rad/s^3), so the response matches what the real
+robot would have. To try faster limits in the simulator only,
+keeping the real robot's 0.8 rad/s:
 
-    make sim-teleop ARM_VEL=1.5 ARM_ACC=5
+    make sim-teleop ARM_ACC=4.0 ARM_JERK=500
+
+In slow moves, the delay drops from about 210 ms to about 115 ms.
+The real robot's driver still uses 1.0 rad/s^2 and 50 rad/s^3.
 
 In another terminal:
 
@@ -207,6 +211,33 @@ Expected result:
 
     GELLO pipeline test SUCCEEDED
 
+### Measure the delay
+
+`ros2_ws/tools/latency.py` measures how far the Panda lags behind
+the GELLO. Record a session, with `make sim-teleop` and
+`make gello` running and control enabled (Ctrl+C stops early):
+
+    make latency-record REC=my_session DURATION=60
+
+Then replay its targets to the simulator, with the original timing.
+GELLO control must be disabled. Restart `make sim-teleop` with other
+limits to compare them on the same motion:
+
+    make latency-replay REC=my_session RUN=my_run
+
+And compare the results:
+
+    make latency-analyze FILES="my_session my_run"
+
+It shows per joint the delay in slow and fast moves, the largest
+lag and the overshoot, for ruckig's output and for the arm.
+The delay doesn't include the GELLO's own read time (about 30 ms).
+Files go to `ros2_ws/tools/data/`, which is not committed.
+`ros2_ws/tools/recordings/gello_01.csv` is a 60 s session with the
+lab's GELLO, ready to replay without hardware:
+
+    make latency-replay REC=gello_01 RUN=my_run
+
 ## 9. Stop
 
 Press Ctrl+C in the terminal running the simulator (and GELLO).
@@ -246,6 +277,7 @@ To stop the container:
 - ros2_ws/gello_teleop/: GELLO ROS 2 package (driver,
   calibrator, offset tool, configuration)
 - ros2_ws/stop_session.sh: Stops a session when its terminal closes
+- ros2_ws/tools/: Delay measurement tool and recordings
 - patches/: Compatibility fixes (including RBC process cleanup)
 - ros2_ws/src/: External ROS 2 repositories
 
