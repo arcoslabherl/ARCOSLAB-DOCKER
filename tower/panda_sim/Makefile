@@ -149,7 +149,10 @@ help:
 
 	@echo "Checking optional RBC launch patch..."
 
-	@if git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_use_rbc.patch" >/dev/null 2>&1; then \
+	@# The arm limits patch builds on this one and changes its context, so if
+	@# that patch is applied, this one is too.
+	@if git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_use_rbc.patch" >/dev/null 2>&1 || \
+	   git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_ruckig_limits.patch" >/dev/null 2>&1; then \
 		echo "Optional RBC launch patch already applied."; \
 	elif git -C $(ROS_SRC)/robot-startup apply --check "$(CURDIR)/patches/sim_launch_use_rbc.patch" >/dev/null 2>&1; then \
 		git -C $(ROS_SRC)/robot-startup apply "$(CURDIR)/patches/sim_launch_use_rbc.patch" && \
@@ -168,6 +171,18 @@ help:
 		echo "Arm limits launch patch applied."; \
 	else \
 		echo "ERROR: Cannot apply arm limits launch patch."; \
+		exit 1; \
+	fi
+
+	@echo "Checking arm joint limits launch patch..."
+
+	@if git -C $(ROS_SRC)/robot-startup apply --reverse --check "$(CURDIR)/patches/sim_launch_joint_limits.patch" >/dev/null 2>&1; then \
+		echo "Arm joint limits launch patch already applied."; \
+	elif git -C $(ROS_SRC)/robot-startup apply --check "$(CURDIR)/patches/sim_launch_joint_limits.patch" >/dev/null 2>&1; then \
+		git -C $(ROS_SRC)/robot-startup apply "$(CURDIR)/patches/sim_launch_joint_limits.patch" && \
+		echo "Arm joint limits launch patch applied."; \
+	else \
+		echo "ERROR: Cannot apply arm joint limits launch patch."; \
 		exit 1; \
 	fi
 
