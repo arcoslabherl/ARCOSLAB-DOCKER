@@ -82,7 +82,7 @@ from std_msgs.msg import Float32
 
 MAX_ERROR = 0.1            # rad
 GRIPPER_MAX_WIDTH = 0.08   # m, as in gello_panda.yaml
-GRIPPER_MAX_ERROR = 0.02   # m: 5 mm steps, 5 mm 'move' tolerance, and lag
+GRIPPER_MAX_ERROR = 0.02   # m: 1 mm steps and lag
 GRIPPER_MIN_TRAVEL = 0.02  # m, the fake trigger moves more than this
 DURATION = 6.0             # s
 
