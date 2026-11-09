@@ -241,6 +241,23 @@ lab's GELLO, ready to replay without hardware:
 
     make latency-replay REC=gello_01 RUN=my_run
 
+### Test the real driver without the robot
+
+`ros2_ws/tools/fake_franka/` builds the lab's real Panda driver
+(`panda_driver_topics`) against a fake libfranka. The fake runs the
+driver's control loop at 1 kHz and checks every command against the
+Panda's limits, as the robot would. See its README.
+
+    make fake-driver-build           # once, and after changing the patch
+    make test-driver [PATCHED=1]     # enable, disable while moving, re-enable, 1 kHz posref
+    make test-reflex [PATCHED=1]     # a reflex during GELLO teleop (fake GELLO)
+
+`PATCHED=1` uses the driver with `patches/panda_driver_safety.patch`.
+That patch is **not** applied by `make .pull`: it changes the code
+that drives the real robot, so it needs the lab's approval first.
+Neither test needs the simulator. `test-reflex` starts its own fake
+GELLO, so stop `make gello` first.
+
 ## 9. Stop
 
 Press Ctrl+C in the terminal running the simulator (and GELLO).
@@ -281,7 +298,9 @@ To stop the container:
   calibrator, offset tool, configuration)
 - ros2_ws/stop_session.sh: Stops a session when its terminal closes
 - ros2_ws/tools/: Delay measurement tool and recordings
-- patches/: Compatibility fixes (including RBC process cleanup)
+- ros2_ws/tools/fake_franka/: Fake libfranka to test the real driver
+- patches/: Compatibility fixes (including RBC process cleanup), and
+  the proposed real-driver patch (not applied by `make .pull`)
 - ros2_ws/src/: External ROS 2 repositories
 
 ## Notes

@@ -1,0 +1,201 @@
+diff --git a/ros2_panda_driver_topics/src/ros2_panda_driver_topics.cpp b/ros2_panda_driver_topics/src/ros2_panda_driver_topics.cpp
+index 4efcc23..74557d6 100644
+--- a/ros2_panda_driver_topics/src/ros2_panda_driver_topics.cpp
++++ b/ros2_panda_driver_topics/src/ros2_panda_driver_topics.cpp
+@@ -56,6 +56,9 @@ franka::Gripper gripper("172.16.0.2");
+ franka::Robot robot("172.16.0.2");
+ franka::JointPositions cmd_q = {{0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}};
+ ruckig::Result result;
++// Goal ruckig tracks, owned by the motion generator. Refreshed from
++// cmd_q_data when its mutex is free, so ruckig runs every cycle.
++std::array<double, NUMBER_OF_JOINTS> goal_q{};
+ franka::GripperState gripper_state;
+ 
+ const double gripper_initial_vel = 0.01;
+@@ -116,6 +119,10 @@ public:
+ 
+     cbg_sub1_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+     cbg_sub_gripper_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
++    // modes_callback waits until the control loop applies the change (up to
++    // ~1 s when control() has to start). In its own group, so the state
++    // timer keeps publishing meanwhile.
++    cbg_modes_ = this->create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+ 
+     auto default_opt=rclcpp::SubscriptionOptions();
+     default_opt.callback_group = cbg_sub1_;
+@@ -133,7 +140,7 @@ public:
+     pub_status_ = this->create_publisher<impedance_control_msgs::msg::Status>(std::string(this->get_name())+"/status", 10);
+ 
+     //TODO: create /control ros2 service (Using "Modes" srv msg)
+-    srv_modes_ = this->create_service<impedance_control_msgs::srv::Modes>(std::string(this->get_name())+"/control", std::bind(&Panda::modes_callback, this, _1, _2), rmw_qos_profile_services_default, cbg_sub1_);
++    srv_modes_ = this->create_service<impedance_control_msgs::srv::Modes>(std::string(this->get_name())+"/control", std::bind(&Panda::modes_callback, this, _1, _2), rmw_qos_profile_services_default, cbg_modes_);
+ 
+     //
+     sub_gripper_ = this->create_service<panda_topics_msgs_srvs::srv::Pandagripper>(std::string(this->get_name())+"/gripper", std::bind(&Panda::gripper_callback, this, _1, _2), rmw_qos_profile_services_default, cbg_sub_gripper_);
+@@ -399,6 +406,7 @@ private:
+ 
+   rclcpp::CallbackGroup::SharedPtr cbg_sub1_;
+   rclcpp::CallbackGroup::SharedPtr cbg_sub_gripper_;
++  rclcpp::CallbackGroup::SharedPtr cbg_modes_;
+   rclcpp::TimerBase::SharedPtr timer_;
+   rclcpp::TimerBase::SharedPtr timer_gripper_;
+   rclcpp::Publisher<impedance_control_msgs::msg::State>::SharedPtr pub_state_;
+@@ -424,86 +432,85 @@ auto my_motion_generator = [](const franka::RobotState& robot_state, franka::Dur
+ 
+   emergency=false;
+   
+-  //First goal should be the current position (to avoid sudden moves when starting. If robot is disabled, it should enter into the first control loop
+-  if (first_control_loop or reactivate or !total_enable) {
+-    if (arm_data.has_data) {
+-      // In this case the robot takes the current reported commanded
+-      // position and sets this as the next goal (to hold the current
+-      // robot position)
+-      // Initialize both cmd_q to the current position (TODO: should be to the current
+-      // commanded q (q_d))
+-      std::cout<<"first_control_loop: "<<first_control_loop<<std::endl;
+-      std::cout<<"reactivate: "<<reactivate<<std::endl;
+-      std::cout<<"total_enable: "<<total_enable<<std::endl;
+-      cmd_q_data.cmd_q = robot_state.q_d;
+-      cmd_q=cmd_q_data.cmd_q;
+-      for (int i=0; i<7; i++) {
+-	std::cout<<std::setprecision(4)<<cmd_q_data.cmd_q.q[i]<<" ";
+-      }
+-      std::cout<<std::endl;
+-      first_control_loop=false;
+-      reactivate=false;
+-      if (!total_enable) {
+-	total_enabled=false;
+-	enabled_updated=true;
++  // First call of this control() (libfranka passes a zero time step): the
++  // robot is at rest at q_d, also after a reflex. Start ruckig from rest
++  // there: the velocity it had before a reflex is stale, and reusing it makes
++  // the arm jump and move by itself (up to v^2/2a).
++  if (time_step.toMSec() == 0) {
++    ruckig_input.current_position = robot_state.q_d;
++    ruckig_input.current_velocity = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++    ruckig_input.current_acceleration = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++    goal_q = robot_state.q_d;
++    cmd_q = robot_state.q_d;
++    first_control_loop = false;
++  }
++
++  // Fill input data (current state)
++  ruckig_input.current_position = robot_state.q_d;
++  ruckig_input.target_velocity = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++  ruckig_input.target_acceleration = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++  // Set this ones from ROS2: (configuration)
++  ruckig_input.max_velocity = {0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8};
++  ruckig_input.max_acceleration = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
++  ruckig_input.max_jerk = {50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0};
++  //ruckig_input.max_jerk = {500.0, 500.0, 500.0, 500.0, 500.0, 500.0, 500.0};
++
++  if (reactivate or !total_enable) {
++    // Not following posref (disabling, disabled, or enabling): brake to rest
++    // with ruckig, never freezing the command (a velocity discontinuity,
++    // i.e. a reflex), then hold. At rest this just holds the position.
++    ruckig_input.control_interface = ruckig::ControlInterface::Velocity;
++    result = my_ruckig.update(ruckig_input, ruckig_output);
++    for (int i=0; i<NUMBER_OF_JOINTS; i++) {
++      cmd_q.q[i]=ruckig_output.new_position[i];
++    }
++    ruckig_output.pass_to_input(ruckig_input);
++    if (result == ruckig::Result::Finished) {
++      // At rest
++      ruckig_input.current_velocity = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++      ruckig_input.current_acceleration = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
++      goal_q = cmd_q.q;
++      if (total_enable) {
++        // Enabling: hold here. An old posref goal must not be reused.
++        if (cmd_q_data.mutex.try_lock()) {
++          cmd_q_data.cmd_q = cmd_q;
++          cmd_q_data.has_data = true;
++          cmd_q_data.mutex.unlock();
++          reactivate = false;
++          std::cout<<"Enabled, holding at:";
++          for (int i=0; i<NUMBER_OF_JOINTS; i++) {
++            std::cout<<" "<<std::setprecision(4)<<cmd_q.q[i];
++          }
++          std::cout<<std::endl;
++        }  // else try again next cycle, still holding
++      } else {
++        reactivate = false;
++        if (total_enabled) {
++          std::cout<<"Disabled, at rest"<<std::endl;
++        }
++        total_enabled = false;
++        enabled_updated = true;
+       }
+-      ruckig_input.current_position = robot_state.q_d;
+-      ruckig_input.current_position = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+-    } else {
+-      // No data. Waiting another cycle until there is an initial data from robot
+     }
+   } else {
+-    // Ruckig stuff
+-    // Fill input data (current state)
+-    ruckig_input.current_position = robot_state.q_d;
+-    //ruckig_input.current_velocity = robot_state.dq_d;
+-    //ruckig_input.current_position = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+-    //ruckig_input.current_velocity = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+-    ruckig_input.target_velocity = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+-    // Set this ones from ROS2: (configuration)
+-    // ruckig_input.max_velocity = {10000, 10000, 10000, 10000, 10000, 10000, 10000};
+-    // ruckig_input.max_acceleration = {100.0, 100.0, 100.0, 100.0, 100.0, 100.0, 100.0};
+-    // ruckig_input.max_jerk = {10000.0, 10000.0, 10000.0, 10000.0, 10000.0, 10000.0, 10000.0};que
+-    ruckig_input.max_velocity = {0.8, 0.8, 0.8, 0.8, 0.8, 0.8, 0.8};
+-    ruckig_input.max_acceleration = {1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0};
+-    ruckig_input.max_jerk = {50.0, 50.0, 50.0, 50.0, 50.0, 50.0, 50.0};
+-    //ruckig_input.max_jerk = {500.0, 500.0, 500.0, 500.0, 500.0, 500.0, 500.0};
+-    //cmd_q.q[3]+=0.01;
+-    // Update cmd_q according to external ROS2 command
+-    // Better to copy the cmd_q data in case cmd_q is returned as a reference and used
+-    // inside libfranka while ros2 is modifying it
++    // Following posref. Copy the goal if the mutex is free; otherwise keep
++    // the previous goal. Ruckig runs every cycle: returning the previous
++    // command instead would stop the arm for one cycle (a reflex).
+     if (cmd_q_data.mutex.try_lock()) {
+-      //std::cout << "cmd_q_data mutex locked in control: "<<std::endl;
+-      
+-      // copy ros cmd_q to ruckig target
+-      //std::cout << "Ruckig target from ROS: "<<std::endl;;
+-      for (int i=0; i<7; i++) {
+-	ruckig_input.target_position[i]=cmd_q_data.cmd_q.q[i];
+-	//std::cout<<std::setprecision(4)<<ruckig_input.target_position[i]<<" ";
+-      }
+-      //std::cout<<std::endl;
+-
+-      // Update ruckig
+-      result = my_ruckig.update(ruckig_input, ruckig_output);
+-      //std::cout << ruckig_output.time << std::endl;
+-      // for (int i=0; i<7; i++) {
+-      // 	std::cout<<std::setprecision(4)<<ruckig_output.new_position[i]<<" ";
+-      // }
+-      // std::cout<<std::endl;
+-      // std::cout << "Ruckig cmd: "<<std::endl;;
+-      for (int i=0; i<7; i++) {
+-	cmd_q.q[i]=ruckig_output.new_position[i];
+-      }
+-      if (result == ruckig::Result::Working) {
+-	// std::cout << "Ruckig in trajectory: "<<std::endl;
+-        ruckig_output.pass_to_input(ruckig_input);
+-	//std::cout<<std::endl;
++      for (int i=0; i<NUMBER_OF_JOINTS; i++) {
++        goal_q[i]=cmd_q_data.cmd_q.q[i];
+       }
+-      cmd_q_data.has_data=true;
+       cmd_q_data.mutex.unlock();
+-      total_enabled=true;
+-      enabled_updated=true;
+     }
++    ruckig_input.control_interface = ruckig::ControlInterface::Position;
++    ruckig_input.target_position = goal_q;
++    result = my_ruckig.update(ruckig_input, ruckig_output);
++    for (int i=0; i<NUMBER_OF_JOINTS; i++) {
++      cmd_q.q[i]=ruckig_output.new_position[i];
++    }
++    ruckig_output.pass_to_input(ruckig_input);
++    total_enabled=true;
++    enabled_updated=true;
+   }
+ 
+   
