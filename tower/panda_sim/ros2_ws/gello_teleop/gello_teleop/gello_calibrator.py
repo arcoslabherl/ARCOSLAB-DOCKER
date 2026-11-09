@@ -12,6 +12,12 @@ calls, so one call is sent at a time, and only when the width changed enough.
 Optionally, pressing the trigger past a threshold sends a 'grasp' instead, to
 hold an object with force. Enabling also needs the trigger to match the
 gripper's width, so the gripper doesn't open and drop what it holds.
+
+It also watches the robot's status (enabled, emergency stop): control only
+runs while the robot reports itself enabled and without emergency. After a
+reflex, the real driver keeps publishing the frozen state, so data timeouts
+alone don't notice it, and re-enabling the driver would move the arm straight
+to wherever the GELLO is by then.
 """
 
 import math
@@ -22,7 +28,7 @@ from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 
 from sensor_msgs.msg import JointState
-from impedance_control_msgs.msg import PosRef, State
+from impedance_control_msgs.msg import PosRef, State, Status
 from panda_topics_msgs_srvs.srv import Pandagripper
 from std_msgs.msg import Bool, Float32
 from std_srvs.srv import SetBool
@@ -58,6 +64,9 @@ class GelloCalibrator(Node):
 
         self.gello_position = None
         self.gello_time = None
+
+        self.robot_problem = None
+        self.robot_status_time = None
 
         self.gripper_value = None
         self.gripper_time = None
@@ -98,6 +107,14 @@ class GelloCalibrator(Node):
             10,
         )
 
+        if self.panda_status_topic:
+            self.create_subscription(
+                Status,
+                self.panda_status_topic,
+                self.status_callback,
+                10,
+            )
+
         self.create_service(
             SetBool,
             "/gello/enable",
@@ -135,6 +152,9 @@ class GelloCalibrator(Node):
         defaults = {
             "gello_topic": "/gello/joint_states",
             "panda_state_topic": "/sim_asimilar_01/panda_arm/state",
+            # Empty: the robot's status isn't checked
+            "panda_status_topic": "/sim_asimilar_01/panda_arm/status",
+            "status_timeout": 1.0,
             "target_topic": "/gello/target_joint_states",
             "posref_topic": "/sim_asimilar_01/panda_arm/posref",
             # Franka Panda joint position limits (rad), J1..J7
@@ -174,6 +194,8 @@ class GelloCalibrator(Node):
 
         self.gello_topic = params["gello_topic"]
         self.panda_state_topic = params["panda_state_topic"]
+        self.panda_status_topic = params["panda_status_topic"]
+        self.status_timeout = params["status_timeout"]
         self.target_topic = params["target_topic"]
         self.posref_topic = params["posref_topic"]
         self.panda_lower = list(params["panda_joint_lower"])
@@ -208,7 +230,8 @@ class GelloCalibrator(Node):
         if self.enable_tolerance <= 0.0:
             raise ValueError("enable_tolerance must be positive")
 
-        for name in ("gripper_max_width", "gripper_min_change",
+        for name in ("status_timeout", "gripper_max_width",
+                     "gripper_min_change",
                      "gripper_speed", "gripper_call_timeout",
                      "gripper_state_timeout", "gripper_enable_tolerance",
                      "gripper_grasp_force"):
@@ -237,6 +260,31 @@ class GelloCalibrator(Node):
         self.panda_position = positions
         self.panda_commanded = commanded
         self.panda_time = time.monotonic()
+
+    def status_callback(self, msg):
+        if not msg.enabled:
+            problem = "robot status is empty"
+        elif any(msg.emergencystop):
+            problem = "robot in emergency stop (reflex or error)"
+        elif not all(msg.enabled):
+            problem = "robot driver not enabled"
+        else:
+            problem = None
+
+        self.robot_problem = problem
+        self.robot_status_time = time.monotonic()
+
+    def robot_check(self):
+        """Whether the robot's status lets control run: (ok, problem)."""
+        if not self.panda_status_topic:
+            return True, None
+
+        if (self.robot_status_time is None
+                or time.monotonic() - self.robot_status_time
+                >= self.status_timeout):
+            return False, f"no robot status on {self.panda_status_topic}"
+
+        return self.robot_problem is None, self.robot_problem
 
     def gello_callback(self, msg):
         if len(msg.position) != 7:
@@ -474,6 +522,14 @@ class GelloCalibrator(Node):
             response.message = "GELLO or Panda data unavailable."
             return response
 
+        robot_ok, robot_problem = self.robot_check()
+        if not robot_ok:
+            response.success = False
+            response.message = (
+                f"Panda not ready: {robot_problem}. Enable the robot first."
+            )
+            return response
+
         if self.other_commander():
             response.success = False
             response.message = (
@@ -518,6 +574,15 @@ class GelloCalibrator(Node):
                 "Communication timeout. GELLO disabled."
             )
 
+        robot_ok, robot_problem = self.robot_check()
+        if self.enabled and not robot_ok:
+            self.disable()
+
+            self.get_logger().error(
+                f"Panda not ready: {robot_problem}. GELLO disabled. "
+                "Re-enable the robot, match its pose, then enable again."
+            )
+
         if self.enabled and self.other_commander():
             self.disable()
 
@@ -533,6 +598,15 @@ class GelloCalibrator(Node):
 
     def log_status(self):
         if not self.data_fresh():
+            return
+
+        # Until the robot is enabled its pose may be meaningless (the real
+        # driver reports zeros before the first enable)
+        robot_ok, robot_problem = self.robot_check()
+        if not robot_ok:
+            self.get_logger().info(
+                f"Panda not ready: {robot_problem}. Enable the robot first."
+            )
             return
 
         if self.enabled:

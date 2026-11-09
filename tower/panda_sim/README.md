@@ -194,12 +194,15 @@ Topics:
 Control disables itself and stops the arm if:
 
 - GELLO or Panda data stops for 0.3 s
+- the robot's `status` reports it disabled or in emergency stop (a
+  reflex on the real Panda), or stops for 1 s
 - another node starts publishing `posref`
 - a GELLO joint jumps more than 0.5 rad between two readings
 
-Enabling is refused if another node publishes `posref`, if any
-joint differs from the Panda by more than 0.1 rad (5.7 degrees), or
-if the trigger doesn't match the gripper.
+Enabling is refused if the robot isn't enabled, if another node
+publishes `posref`, if any joint differs from the Panda by more
+than 0.1 rad (5.7 degrees), or if the trigger doesn't match the
+gripper.
 
 ### Test
 
