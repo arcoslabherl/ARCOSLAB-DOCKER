@@ -47,14 +47,15 @@ call /gello/enable std_srvs/srv/SetBool "{data: false}" >/dev/null \
 
 echo "Enabling..."
 ENABLED=false
-for attempt in $(seq 1 10); do
+for attempt in $(seq 1 30); do
     output=$(call /gello/enable std_srvs/srv/SetBool "{data: true}") || true
     if grep -q "success=True" <<< "$output"; then
         ENABLED=true
         break
     fi
-    # The Panda may still be going home
-    sleep 1
+    # The Panda may still be going home, or the fake trigger (10 s cycle)
+    # may not match the gripper's width yet
+    sleep 0.5
 done
 [[ "$ENABLED" == true ]] || fail "Enable failed: ${output##*response:}"
 

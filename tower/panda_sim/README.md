@@ -167,6 +167,15 @@ pose again before enabling.
 While enabled, the gripper follows the GELLO's trigger: released is
 open (0.08 m), pressed is closed. Each gripper move must finish
 before the next one starts, so it follows in steps of 5 mm or more.
+The trigger must also match the gripper's width to enable (within
+15 mm, the hint says `press the trigger` or `release the trigger`),
+so enabling doesn't open the gripper and drop what it holds.
+
+For the real Panda, `gripper_grasp: true` in
+`gello_teleop/config/gello_panda.yaml` makes pressing the trigger
+past 90% grasp with force, and hold until it goes below 80%. It's
+off in the simulator: there, a grasp with nothing to hold never
+finishes and blocks the gripper.
 
 Topics:
 
@@ -184,8 +193,9 @@ Control disables itself and stops the arm if:
 - another node starts publishing `posref`
 - a GELLO joint jumps more than 0.5 rad between two readings
 
-Enabling is refused if another node publishes `posref`, or if any
-joint differs from the Panda by more than 0.1 rad (5.7 degrees).
+Enabling is refused if another node publishes `posref`, if any
+joint differs from the Panda by more than 0.1 rad (5.7 degrees), or
+if the trigger doesn't match the gripper.
 
 ### Test
 

@@ -71,3 +71,24 @@ gello_calibrator:
     gripper_min_change: 0.005   # m
     gripper_speed: 0.05         # m/s
     gripper_call_timeout: 5.0   # s, then a stuck call is given up
+
+    # Gripper width, for the enable check: the trigger must match it within
+    # gripper_enable_tolerance, so enabling doesn't open the gripper and drop
+    # what it holds. The sim and the real driver publish it as this joint, at
+    # half the width. Real driver: <ns>/panda_arm/joint_states, check it.
+    gripper_state_topic: /sim_asimilar_01/joint_states
+    gripper_state_joint: panda_j7
+    gripper_state_timeout: 1.0      # s
+    gripper_enable_tolerance: 0.015 # m (the sim's 'move' alone allows 5 mm)
+
+    # Grasp: pressing the trigger past gripper_grasp_threshold sends a
+    # 'grasp' (closes with gripper_grasp_force until it holds something),
+    # needed on the real Panda, where 'move' fails on contact. It holds until
+    # the trigger goes below gripper_grasp_release. Enabling in the grasp zone
+    # is allowed: a grasp only closes.
+    # OFF in the sim: without a simulated object its 'grasp' never finishes,
+    # and the blocked call stops every later gripper command.
+    gripper_grasp: false
+    gripper_grasp_threshold: 0.9
+    gripper_grasp_release: 0.8
+    gripper_grasp_force: 20.0       # N
