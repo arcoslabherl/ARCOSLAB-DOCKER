@@ -4,7 +4,7 @@ set -e
 # ARCoS-Lab - Franka Panda Simulator
 # ROS 2 Humble
 #
-# Usage: start_sim.sh [rbc|teleop] [max velocity] [max acceleration]
+# Usage: start_sim.sh [rbc|teleop] [max velocity] [max acceleration] [max jerk]
 #   rbc     RBC and a Joint Reacher (default)
 #   teleop  no RBC: GELLO is the only source of arm commands. The limits
 #           default to the ones in the real robot's driver.
@@ -12,6 +12,7 @@ set -e
 MODE="${1:-rbc}"
 ARM_VEL="${2:-0.8}"
 ARM_ACC="${3:-1.0}"
+ARM_JERK="${4:-50}"
 NAMESPACE="/sim_asimilar_01"
 
 source /opt/ros/humble/setup.bash
@@ -52,9 +53,10 @@ if [[ "$MODE" == "teleop" ]]; then
         use_rbc:=false
         arm_max_velocity:="$ARM_VEL"
         arm_max_acceleration:="$ARM_ACC"
+        arm_max_jerk:="$ARM_JERK"
     )
 
-    echo "Arm limits: ${ARM_VEL} rad/s, ${ARM_ACC} rad/s^2"
+    echo "Arm limits: ${ARM_VEL} rad/s, ${ARM_ACC} rad/s^2, ${ARM_JERK} rad/s^3"
 
     # RBC is what normally sends the arm home; the simulated arm starts at
     # all zeros. Simulator only: the real robot must never get this jump.
