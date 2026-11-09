@@ -7,7 +7,7 @@ ros2_ws/log/
 ros2_ws/src/
 
 # Python
-pycache/
+__pycache__/
 *.pyc
 
 # Runtime files

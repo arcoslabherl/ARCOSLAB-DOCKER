@@ -20,6 +20,7 @@ RUN apt-get update && \
         python3-rosdep \
         python3-vcstool \
         python3-numba \
+        python3-serial \
         ros-humble-rviz2 \
         ros-humble-xacro \
         ros-humble-robot-state-publisher \
@@ -29,9 +30,10 @@ RUN apt-get update && \
         ros-humble-rosidl-default-generators && \
     rm -rf /var/lib/apt/lists/*
 
-# Python dependencies for Robot Body Coupler
+# Python dependencies for Robot Body Coupler and GELLO (Dynamixel)
 RUN python3 -m pip install --no-cache-dir --no-deps \
-    quaternionic==1.0.17
+    quaternionic==1.0.17 \
+    dynamixel-sdk==3.7.31
 
 # ROS 2 environment
 COPY ./ros_entrypoint.sh /sbin/ros_entrypoint.sh
