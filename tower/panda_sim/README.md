@@ -1,8 +1,12 @@
 # Franka Panda Simulator - Dell Precision Tower
 
 Docker environment for the ARCoS-Lab Franka Panda simulator
-using ROS 2 Humble, Robot Body Coupler (RBC), Joint Reacher
-and RViz2.
+using ROS 2 Humble and RViz2. It runs in two modes:
+
+- `make sim`: with the Robot Body Coupler (RBC) and a Joint
+  Reacher (sections 5 to 7).
+- `make sim-teleop`: without RBC, for GELLO teleoperation
+  (section 8).
 
 ## Requirements
 
@@ -61,24 +65,17 @@ This starts:
 
 Joint Reacher is initialized automatically.
 
-## 6. Test joint movement
+## 6. Test the simulated Panda
 
 With the simulator running, open another terminal:
 
-    make test-j1
-
-This test:
-
-1. Moves Panda J1 to 0.1 rad.
-2. Waits for successful action completion.
-3. Returns J1 to 0.0 rad.
-4. Verifies that both ROS 2 actions succeed.
+    make test-all-joints   # moves each joint 0.1 rad and back
+    make test-gripper      # opens and closes the gripper
+    make test-panda        # both
 
 Expected result:
 
-    Goal finished with status: SUCCEEDED
-
-    Franka Panda J1 test completed successfully.
+    Full Panda test SUCCEEDED
 
 ## 7. Verify ROS 2
 
@@ -121,18 +118,19 @@ angles, stored in:
 
     ros2_ws/gello_teleop/config/gello_panda.yaml
 
-Copy them from the unit's `PORT_CONFIG_MAP` entry in
-gello_software, or measure them. Hold the GELLO in the Panda pose
-`0 0 0 -1.57 0 1.57 0` with the gripper trigger released and run:
+The lab's GELLO is already calibrated there. For another unit,
+hold it in the Panda pose `0 0 0 -1.57 0 1.57 0` with the gripper
+trigger released and run, with that unit's joint signs:
 
-    make gello-offsets GELLO_SIGNS="1 -1 1 1 1 -1 1"
+    make gello-offsets GELLO_SIGNS="1 1 1 1 1 -1 1"
 
 Paste the printed block into the YAML file. The driver refuses
 to start with real hardware until offsets are set.
 
-The tool only finds offsets in steps of 90 degrees. If a servo is
-mounted at another angle, set that offset by hand. The YAML file
-explains the case of J7 on the lab's GELLO.
+The tool only finds offsets in steps of 90 degrees and assumes a
+42 degree trigger travel. If a servo is mounted at another angle,
+or the trigger travels more, set those values by hand. The YAML
+file explains the case of J7 on the lab's GELLO.
 
 ### Run
 
@@ -251,47 +249,23 @@ To stop the container:
 
     make stop
 
-## Configuration
-
-- Platform: x86_64 workstation
-- ROS distribution: Humble
-- Simulator: ARCoS-Lab Virtual Robot
-- Control architecture: Robot Body Coupler
-- Joint controller: Joint Reacher
-- Visualization: RViz2
-- ROS namespace: /sim_asimilar_01
-- Docker container: panda-sim-tower
-- Docker image: arcoslab-panda:sim-humble
-
 ## Project structure
 
-- Dockerfile: ROS 2 environment and dependencies
-- Makefile: Build and execution commands
-- ros_entrypoint.sh: ROS 2 environment initialization
-- ros2_ws/build_ws.sh: Workspace compilation
-- ros2_ws/start_sim.sh: Simulator startup
-- ros2_ws/setup_jr.sh: Joint Reacher initialization
-- ros2_ws/test_joint.sh: J1 movement test
-- ros2_ws/panda_sim.rviz: RViz2 configuration
-- ros2_ws/start_gello.sh: GELLO startup
-- ros2_ws/test_gello.sh: GELLO pipeline test
-- ros2_ws/gello_teleop/: GELLO ROS 2 package (driver,
+- `Dockerfile`, `ros_entrypoint.sh`: ROS 2 environment
+- `Makefile`: all commands (`make help`)
+- `patches/`: changes to the external repositories, applied by
+  `make .pull`
+- `ros2_ws/src/`: external ARCoS-Lab repositories, at pinned
+  commits (not committed; GitLab access required)
+- `ros2_ws/gello_teleop/`: GELLO ROS 2 package (driver,
   calibrator, offset tool, configuration)
-- ros2_ws/stop_session.sh: Stops a session when its terminal closes
-- ros2_ws/tools/: Delay measurement tool and recordings
-- patches/: Compatibility fixes (including RBC process cleanup)
-- ros2_ws/src/: External ROS 2 repositories
+- `ros2_ws/*.sh`: workspace build, startup, Joint Reacher setup,
+  session cleanup and tests
+- `ros2_ws/panda_sim.rviz`: RViz2 configuration
+- `ros2_ws/tools/`: delay measurement tool and recordings
 
-## Notes
+Inside the container: ROS namespace `/sim_asimilar_01`, container
+`panda-sim-tower`, image `arcoslab-panda:sim-humble`.
 
-The external ARCoS-Lab repositories are not committed
-to ARCOSLAB-DOCKER.
-
-GitLab access is required to download these dependencies.
-
-This environment has been tested with the simulated
-Franka Panda. It does not require connecting the physical robot.
-
-Automatic tests cover all seven joints, the gripper and
-the GELLO pipeline, including the Panda and its gripper
-following the GELLO.
+This environment runs only the simulated Panda. The physical
+Panda driver is downloaded but excluded from the build.

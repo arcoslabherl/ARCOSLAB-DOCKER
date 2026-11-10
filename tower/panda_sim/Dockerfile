@@ -17,20 +17,19 @@ RUN apt-get update && \
         python3-numpy \
         python3-scipy \
         python3-colcon-common-extensions \
-        python3-rosdep \
-        python3-vcstool \
         python3-numba \
         python3-serial \
         ros-humble-rviz2 \
         ros-humble-xacro \
         ros-humble-robot-state-publisher \
-        ros-humble-joint-state-publisher \
         ros-humble-tf2-ros \
         ros-humble-ruckig \
         ros-humble-rosidl-default-generators && \
     rm -rf /var/lib/apt/lists/*
 
-# Python dependencies for Robot Body Coupler and GELLO (Dynamixel)
+# Python dependencies for Robot Body Coupler and GELLO (Dynamixel).
+# --no-deps: quaternionic's own dependencies (numpy, scipy, numba) and
+# dynamixel-sdk's (pyserial) come from apt above.
 RUN python3 -m pip install --no-cache-dir --no-deps \
     quaternionic==1.0.17 \
     dynamixel-sdk==3.7.31

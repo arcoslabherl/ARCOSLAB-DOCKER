@@ -18,8 +18,10 @@ import math
 import time
 
 import rclpy
+from rclpy.exceptions import ParameterUninitializedException
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.parameter import Parameter
 
 from sensor_msgs.msg import JointState
 from impedance_control_msgs.msg import PosRef, State
@@ -132,45 +134,48 @@ class GelloCalibrator(Node):
         )
 
     def load_parameters(self):
-        defaults = {
-            "gello_topic": "/gello/joint_states",
-            "panda_state_topic": "/sim_asimilar_01/panda_arm/state",
-            "target_topic": "/gello/target_joint_states",
-            "posref_topic": "/sim_asimilar_01/panda_arm/posref",
-            # Franka Panda joint position limits (rad), J1..J7
-            "panda_joint_lower":
-                [-2.8973, -1.7628, -2.8973, -3.0718,
-                 -2.8973, -0.0175, -2.8973],
-            "panda_joint_upper":
-                [2.8973, 1.7628, 2.8973, -0.0698,
-                 2.8973, 3.7525, 2.8973],
-            "enable_tolerance": 0.1,
-            "max_sample_change": 0.5,
-            "data_timeout": 0.3,
-            "status_interval": 0.5,
-            # Empty gripper_service: the gripper isn't controlled
-            "gripper_topic": "/gello/gripper",
-            "gripper_service": "/sim_asimilar_01/panda_arm/gripper",
-            "gripper_max_width": 0.08,
-            "gripper_min_change": 0.001,
-            "gripper_speed": 0.1,
-            "gripper_call_timeout": 5.0,
-            # Both the sim and the real driver publish the gripper as one
-            # joint_states joint, at half the width (one finger)
-            "gripper_state_topic": "/sim_asimilar_01/joint_states",
-            "gripper_state_joint": "panda_j7",
-            "gripper_state_timeout": 1.0,
-            "gripper_enable_tolerance": 0.015,
-            "gripper_grasp": False,
-            "gripper_grasp_threshold": 0.9,
-            "gripper_grasp_release": 0.8,
-            "gripper_grasp_force": 20.0,
+        # Values come only from config/gello_panda.yaml (no defaults here,
+        # so there's a single place to change them).
+        STRING = Parameter.Type.STRING
+        DOUBLE = Parameter.Type.DOUBLE
+        DOUBLES = Parameter.Type.DOUBLE_ARRAY
+        types = {
+            "gello_topic": STRING,
+            "panda_state_topic": STRING,
+            "target_topic": STRING,
+            "posref_topic": STRING,
+            "panda_joint_lower": DOUBLES,
+            "panda_joint_upper": DOUBLES,
+            "enable_tolerance": DOUBLE,
+            "max_sample_change": DOUBLE,
+            "data_timeout": DOUBLE,
+            "status_interval": DOUBLE,
+            "gripper_topic": STRING,
+            "gripper_service": STRING,
+            "gripper_max_width": DOUBLE,
+            "gripper_min_change": DOUBLE,
+            "gripper_speed": DOUBLE,
+            "gripper_call_timeout": DOUBLE,
+            "gripper_state_topic": STRING,
+            "gripper_state_joint": STRING,
+            "gripper_state_timeout": DOUBLE,
+            "gripper_enable_tolerance": DOUBLE,
+            "gripper_grasp": Parameter.Type.BOOL,
+            "gripper_grasp_threshold": DOUBLE,
+            "gripper_grasp_release": DOUBLE,
+            "gripper_grasp_force": DOUBLE,
         }
 
         params = {}
-        for name, default in defaults.items():
-            self.declare_parameter(name, default)
-            params[name] = self.get_parameter(name).value
+        for name, param_type in types.items():
+            self.declare_parameter(name, param_type)
+            try:
+                params[name] = self.get_parameter(name).value
+            except ParameterUninitializedException:
+                raise ValueError(
+                    f"Parameter '{name}' not set. Launch with "
+                    "config/gello_panda.yaml (make gello / gello-fake)."
+                ) from None
 
         self.gello_topic = params["gello_topic"]
         self.panda_state_topic = params["panda_state_topic"]
