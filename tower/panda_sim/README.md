@@ -169,8 +169,9 @@ After disabling, or if control stops by itself, match the Panda's
 pose again before enabling.
 
 While enabled, the gripper follows the GELLO's trigger: released is
-open (0.08 m), pressed is closed. Each gripper move must finish
-before the next one starts, so it follows in steps of 5 mm or more.
+open (0.08 m), pressed is closed, at 0.1 m/s. Each gripper move
+must finish before the next one starts, so it follows in 1 mm steps.
+A full squeeze takes about 0.8 s to follow.
 The trigger must also match the gripper's width to enable (within
 15 mm, the hint says `press the trigger` or `release the trigger`),
 so enabling doesn't open the gripper and drop what it holds.

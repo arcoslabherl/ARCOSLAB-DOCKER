@@ -1,0 +1,15 @@
+diff --git a/virtual_robot/src/impedance_control_virtual_robot.cpp b/virtual_robot/src/impedance_control_virtual_robot.cpp
+index fb7931d..d3577ab 100644
+--- a/virtual_robot/src/impedance_control_virtual_robot.cpp
++++ b/virtual_robot/src/impedance_control_virtual_robot.cpp
+@@ -716,8 +716,8 @@ void ImpedanceControlVirtualRobot::gripper_callback(const std::shared_ptr<panda_
+   this->gripper_state->cmd = request->cmd;
+   this->gripper_state->finished = false;
+   if (this->gripper_state->cmd == "move") {
+-    this->gripper_state->epsilon_inner = 0.005;
+-    this->gripper_state->epsilon_outer = 0.005;
++    this->gripper_state->epsilon_inner = 0.0005;
++    this->gripper_state->epsilon_outer = 0.0005;
+   } else {
+     this->gripper_state->epsilon_inner = (double) request->epsilon_inner;
+     this->gripper_state->epsilon_outer = (double) request->epsilon_outer;

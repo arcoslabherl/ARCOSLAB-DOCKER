@@ -152,8 +152,8 @@ class GelloCalibrator(Node):
             "gripper_topic": "/gello/gripper",
             "gripper_service": "/sim_asimilar_01/panda_arm/gripper",
             "gripper_max_width": 0.08,
-            "gripper_min_change": 0.005,
-            "gripper_speed": 0.05,
+            "gripper_min_change": 0.001,
+            "gripper_speed": 0.1,
             "gripper_call_timeout": 5.0,
             # Both the sim and the real driver publish the gripper as one
             # joint_states joint, at half the width (one finger)

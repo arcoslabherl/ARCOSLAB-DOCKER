@@ -191,6 +191,18 @@ help:
 		exit 1; \
 	fi
 
+	@echo "Checking gripper move tolerance patch..."
+
+	@if git -C $(ROS_SRC)/virtual-robot apply --reverse --check "$(CURDIR)/patches/sim_gripper_move_tolerance.patch" >/dev/null 2>&1; then \
+		echo "Gripper move tolerance patch already applied."; \
+	elif git -C $(ROS_SRC)/virtual-robot apply --check "$(CURDIR)/patches/sim_gripper_move_tolerance.patch" >/dev/null 2>&1; then \
+		git -C $(ROS_SRC)/virtual-robot apply "$(CURDIR)/patches/sim_gripper_move_tolerance.patch" && \
+		echo "Gripper move tolerance patch applied."; \
+	else \
+		echo "ERROR: Cannot apply gripper move tolerance patch."; \
+		exit 1; \
+	fi
+
 	@echo "Simulator repositories downloaded."
 
 .build:
