@@ -44,7 +44,8 @@ ARCOSLAB-DOCKER/
 - **`jetson-orin/ouster_ros/`** contains the Ouster OS1-128 integration, including a versioned compatibility patch.
 - **`tower/panda_sim/`** contains the Franka Panda simulation
   environment for x86_64 workstations, including ROS 2 Humble,
-  Robot Body Coupler, Joint Reacher and RViz2.
+  Robot Body Coupler, Joint Reacher, RViz2 and GELLO
+  teleoperation.
 
 ## Technology Stack
 
@@ -84,7 +85,7 @@ Follow the [Ouster setup guide](jetson-orin/ouster_ros/README.md) for the pinned
 -----
 ### Franka Panda Simulator
 
-From the repository root:
+It doesn't use the Jetson base image (step 2). From the repository root:
 
 ```bash
 cd tower/panda_sim
@@ -92,8 +93,11 @@ make .pull
 make .build
 make run
 make .colcon_build
-make sim
+make sim          # simulator with RBC and a Joint Reacher
 ```
+
+To control it with the GELLO instead, run `make sim-teleop` and `make gello`
+in separate terminals (see the [GELLO guide](tower/panda_sim/ros2_ws/gello_teleop/README.md)).
 
 For subsequent sessions, rebuilding is not necessary unless source code or dependencies have changed.
 
@@ -109,6 +113,8 @@ For subsequent sessions, rebuilding is not necessary unless source code or depen
 
 - [RoboSense E1R — Setup and Usage](jetson-orin/rslidar_sdk/README.md)
 - [Ouster OS1-128 — Setup and Usage](jetson-orin/ouster_ros/README.md)
+- [Franka Panda Simulator — Setup and Usage](tower/panda_sim/README.md)
+- [GELLO Teleoperation](tower/panda_sim/ros2_ws/gello_teleop/README.md)
 
 ## About
 
