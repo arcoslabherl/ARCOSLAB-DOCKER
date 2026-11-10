@@ -27,7 +27,7 @@ GITLAB = https://gitlab.com/arcoslab
 # does not stop it when the terminal is closed, so stop its process
 # group whenever this command ends (Ctrl+C, closed terminal, error).
 define exec_session
-	@bash -c 'trap "docker exec $(CONTAINER_NAME) bash /ros2_ws/stop_session.sh $$$$ >/dev/null 2>&1" EXIT; \
+	@bash -c 'trap "docker exec $(CONTAINER_NAME) bash /ros2_ws/scripts/stop_session.sh $$$$ >/dev/null 2>&1" EXIT; \
 		trap "exit 129" HUP; trap "exit 130" INT; trap "exit 143" TERM; \
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
@@ -130,30 +130,30 @@ debug:
 
 .colcon_build:
 	docker exec -it $(CONTAINER_NAME) bash \
-	/ros2_ws/build_ws.sh
+	/ros2_ws/scripts/build_ws.sh
 
 sim:
-	$(call exec_session,/ros2_ws/start_sim.sh)
+	$(call exec_session,/ros2_ws/scripts/start_sim.sh)
 
 sim-teleop:
-	$(call exec_session,/ros2_ws/start_sim.sh teleop $(ARM_VEL) $(ARM_ACC) $(ARM_JERK))
+	$(call exec_session,/ros2_ws/scripts/start_sim.sh teleop $(ARM_VEL) $(ARM_ACC) $(ARM_JERK))
 
 test-all-joints:
 	docker exec -it $(CONTAINER_NAME) bash \
-		/ros2_ws/test_all_joints.sh
+		/ros2_ws/scripts/test_all_joints.sh
 
 test-gripper:
 	docker exec -it $(CONTAINER_NAME) bash \
-		/ros2_ws/test_gripper.sh
+		/ros2_ws/scripts/test_gripper.sh
 
 test-panda: test-all-joints test-gripper
 	@echo "Full Panda test SUCCEEDED"
 
 gello:
-	$(call exec_session,/ros2_ws/start_gello.sh dynamixel $(GELLO_PORT))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT))
 
 gello-fake:
-	$(call exec_session,/ros2_ws/start_gello.sh fake)
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake)
 
 gello-enable:
 	docker exec -it $(CONTAINER_NAME) bash -c \
@@ -173,7 +173,7 @@ gello-offsets:
 
 test-gello:
 	docker exec -it $(CONTAINER_NAME) bash \
-		/ros2_ws/test_gello.sh
+		/ros2_ws/scripts/test_gello.sh
 
 # Latency measurements (tools/latency.py). Files go to ros2_ws/tools/data/.
 LATENCY = docker exec -it -e HOST_UID=$(shell id -u) -e HOST_GID=$(shell id -g) \

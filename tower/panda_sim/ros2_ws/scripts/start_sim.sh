@@ -77,7 +77,7 @@ else
     (
         wait_for_service "${NAMESPACE}/rbc_l2_ctrl" || exit 1
 
-        bash /ros2_ws/setup_jr.sh
+        bash /ros2_ws/scripts/setup_jr.sh
     ) &
 fi
 

@@ -259,8 +259,8 @@ To stop the container:
   commits (not committed; GitLab access required)
 - `ros2_ws/gello_teleop/`: GELLO ROS 2 package (driver,
   calibrator, offset tool, configuration)
-- `ros2_ws/*.sh`: workspace build, startup, Joint Reacher setup,
-  session cleanup and tests
+- `ros2_ws/scripts/`: workspace build, startup, Joint Reacher
+  setup, session cleanup and tests (run by the Makefile)
 - `ros2_ws/panda_sim.rviz`: RViz2 configuration
 - `ros2_ws/tools/`: delay measurement tool and recordings
 
