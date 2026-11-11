@@ -1,7 +1,10 @@
 # ARCoS-Lab - Franka Panda Simulator
 # Dell Precision 5860 Tower / ROS 2 Humble
 
-FROM ros:humble-ros-base
+# Pinned by digest (ros:humble-ros-base as of 2026-10-27), so a rebuild
+# starts from the same base. To update: pull the tag, put its digest here
+# ('docker image inspect ros:humble-ros-base'), then run 'make test-sim'.
+FROM ros:humble-ros-base@sha256:d9bcf2e6f72df127fdee07048c2e87b1b4b9a59a74af0592f4489fc2844aa855
 
 ENV DEBIAN_FRONTEND=noninteractive
 
