@@ -57,7 +57,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build run debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
@@ -82,6 +82,9 @@ help:
 	@echo "  make latency-record REC=name [DURATION=60]  Record a GELLO session"
 	@echo "  make latency-replay REC=name RUN=name       Replay it to the sim"
 	@echo "  make latency-analyze FILES=\"name ...\"      Delay, lag and overshoot"
+	@echo "  make fake-driver-build  Build the real Panda driver on a fake libfranka"
+	@echo "  make test-driver [PATCHED=1]  Test the real driver on the fake libfranka"
+	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -202,6 +205,21 @@ latency-replay:
 latency-analyze:
 	@test -n "$(FILES)" || { echo 'Usage: make latency-analyze FILES="name ..."'; exit 1; }
 	$(LATENCY) analyze $(FILES)"
+
+# The real Panda driver on a fake libfranka (tools/fake_franka/), no robot
+# needed. PATCHED=1 uses the driver with patches/panda_driver_safety.patch.
+DRIVER_PATCH = panda_driver_safety.patch
+FAKE_FRANKA = /ros2_ws/tools/fake_franka
+
+fake-driver-build:
+	docker cp patches/$(DRIVER_PATCH) $(CONTAINER_NAME):/tmp/$(DRIVER_PATCH)
+	docker exec $(CONTAINER_NAME) bash $(FAKE_FRANKA)/build.sh /tmp/$(DRIVER_PATCH)
+
+test-driver:
+	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_driver.sh $(if $(PATCHED),--patched)
+
+test-reflex:
+	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_reflex.sh $(if $(PATCHED),--patched)
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)

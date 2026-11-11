@@ -71,3 +71,41 @@ def test_old_data_is_stale_from_the_timeout_on():
     assert safety.stale_sources([("GELLO", "/gello", 10.0)], 10.125, 0.25) == []
     assert safety.stale_sources([("GELLO", "/gello", 10.0)], 10.25, 0.25) == [
         "GELLO (/gello): 0.25 s old"]
+
+
+# --- Robot status (enabled, emergency stop) --------------------------------
+
+def test_robot_status_in_the_config():
+    assert CALIBRATOR["panda_status_topic"].endswith("/panda_arm/status")
+    assert CALIBRATOR["status_timeout"] > 0.0
+
+
+@pytest.mark.parametrize("enabled, emergency, problem", [
+    ([True] * 8, [False] * 8, None),
+    ([], [], "robot status is empty"),
+    ([True] * 7 + [False], [False] * 8, "robot driver not enabled"),
+    ([False] * 8, [False] * 8, "robot driver not enabled"),
+    # A reflex: the driver still reports itself enabled
+    ([True] * 8, [False] * 3 + [True] + [False] * 4,
+     "robot in emergency stop (reflex or error)"),
+    ([False] * 8, [True] * 8, "robot in emergency stop (reflex or error)"),
+])
+def test_robot_problem(enabled, emergency, problem):
+    assert safety.robot_problem(enabled, emergency) == problem
+
+
+def test_robot_ready_needs_a_status():
+    ok, problem = safety.robot_ready(None, None, 10.0, 1.0, "/status")
+    assert not ok
+    assert problem == "no robot status on /status yet"
+
+
+def test_robot_ready_needs_a_recent_status():
+    assert safety.robot_ready(None, 10.0, 10.5, 1.0, "/status") == (True, None)
+    assert safety.robot_ready(None, 10.0, 11.0, 1.0, "/status") == (
+        False, "robot status (/status) 1.00 s old")
+
+
+def test_robot_ready_reports_the_problem():
+    problem = "robot in emergency stop (reflex or error)"
+    assert safety.robot_ready(problem, 10.0, 10.0, 1.0, "/status") == (False, problem)

@@ -48,6 +48,12 @@ gello_calibrator:
   ros__parameters:
     gello_topic: /gello/joint_states
     panda_state_topic: /sim_asimilar_01/panda_arm/state
+    # Robot status (enabled, emergency stop). Control only runs while the
+    # robot reports itself enabled and not in emergency: after a reflex the
+    # real driver keeps publishing the frozen state, so the data timeout
+    # alone doesn't notice. "" turns the check off.
+    panda_status_topic: /sim_asimilar_01/panda_arm/status
+    status_timeout: 1.0      # s (the sim publishes status at 10 Hz)
     target_topic: /gello/target_joint_states
     posref_topic: /sim_asimilar_01/panda_arm/posref
 

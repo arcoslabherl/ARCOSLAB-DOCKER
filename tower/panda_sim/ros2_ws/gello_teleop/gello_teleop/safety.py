@@ -48,3 +48,28 @@ def stale_sources(sources, now, timeout):
         elif now - stamp >= timeout:
             stale.append(f"{name} ({topic}): {now - stamp:.2f} s old")
     return stale
+
+
+def robot_problem(enabled, emergency_stop):
+    """What keeps the robot from following, from its Status message, or None.
+
+    enabled and emergency_stop: one flag per joint (the real driver's
+    Status). After a reflex the real driver keeps publishing the frozen
+    state, so only the status shows it.
+    """
+    if not enabled:
+        return "robot status is empty"
+    if any(emergency_stop):
+        return "robot in emergency stop (reflex or error)"
+    if not all(enabled):
+        return "robot driver not enabled"
+    return None
+
+
+def robot_ready(problem, stamp, now, timeout, topic):
+    """Whether the last robot status lets control run: (ok, problem)."""
+    if stamp is None:
+        return False, f"no robot status on {topic} yet"
+    if now - stamp >= timeout:
+        return False, f"robot status ({topic}) {now - stamp:.2f} s old"
+    return problem is None, problem

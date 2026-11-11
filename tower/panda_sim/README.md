@@ -120,6 +120,23 @@ terminals:
 Setup, calibration, safety checks, gripper, tests and delay
 measurements: see the [GELLO README](ros2_ws/gello_teleop/README.md).
 
+### Test the real driver without the robot
+
+`ros2_ws/tools/fake_franka/` builds the lab's real Panda driver
+(`panda_driver_topics`) against a fake libfranka. The fake runs the
+driver's control loop at 1 kHz and checks every command against the
+Panda's limits, as the robot would. See its README.
+
+    make fake-driver-build           # once, and after changing the patch
+    make test-driver [PATCHED=1]     # enable, disable while moving, re-enable, 1 kHz posref
+    make test-reflex [PATCHED=1]     # a reflex during GELLO teleop (fake GELLO)
+
+`PATCHED=1` uses the driver with `patches/panda_driver_safety.patch`.
+That patch is **not** applied by `make .pull`: it changes the code
+that drives the real robot, so it needs the lab's approval first.
+Neither test needs the simulator. `test-reflex` starts its own fake
+GELLO, so stop `make gello` first.
+
 ## 9. Stop
 
 Press Ctrl+C in the terminal running the simulator (and GELLO).
@@ -137,7 +154,8 @@ To stop the container:
 - `Dockerfile`, `ros_entrypoint.sh`: ROS 2 environment
 - `Makefile`: all commands (`make help`)
 - `patches/`: changes to the external repositories, applied by
-  `make .pull`
+  `make .pull`, and the proposed real-driver patch
+  `panda_driver_safety.patch` (not applied by `make .pull`)
 - `ros2_ws/src/`: external ARCoS-Lab repositories, at pinned
   commits (not committed; GitLab access required)
 - `ros2_ws/gello_teleop/`: GELLO ROS 2 package (driver,
@@ -146,6 +164,8 @@ To stop the container:
   setup, session cleanup and tests (run by the Makefile)
 - `ros2_ws/panda_sim.rviz`: RViz2 configuration
 - `ros2_ws/tools/`: delay measurement tool and recordings
+- `ros2_ws/tools/fake_franka/`: fake libfranka to test the real
+  driver without the robot
 
 Inside the container: ROS namespace `/sim_asimilar_01`, container
 `panda-sim-tower`, image `arcoslab-panda:sim-humble`.
