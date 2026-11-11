@@ -29,6 +29,9 @@ from panda_topics_msgs_srvs.srv import Pandagripper
 from std_msgs.msg import Bool, Float32
 from std_srvs.srv import SetBool
 
+from gello_teleop import safety
+from gello_teleop.gripper import GripperControl
+
 
 JOINT_NAMES = [f"panda_j{i}" for i in range(7)]
 
@@ -61,18 +64,25 @@ class GelloCalibrator(Node):
         self.gello_position = None
         self.gello_time = None
 
-        self.gripper_value = None
-        self.gripper_time = None
-        self.gripper_width = None
-        self.gripper_width_time = None
-        self.gripper_width_sent = None
-        self.gripper_grasping = False
+        # Gripper service calls in progress (the decisions are in GripperControl)
         self.gripper_future = None
         self.gripper_cmd_sent = None
         self.gripper_call_time = None
         self.gripper_warned = False
 
         self.load_parameters()
+
+        self.gripper = GripperControl(
+            max_width=self.gripper_max_width,
+            min_change=self.gripper_min_change,
+            enable_tolerance=self.gripper_enable_tolerance,
+            state_timeout=self.gripper_state_timeout,
+            state_topic=self.gripper_state_topic,
+            grasp=self.gripper_grasp,
+            grasp_threshold=self.gripper_grasp_threshold,
+            grasp_release=self.gripper_grasp_release,
+            grasp_force=self.gripper_grasp_force,
+        )
 
         self.target_pub = self.create_publisher(
             JointState, self.target_topic, 10
@@ -227,35 +237,23 @@ class GelloCalibrator(Node):
             )
 
     def panda_callback(self, msg):
-        if len(msg.position) != 7:
+        positions = safety.valid_joints(msg.position)
+        if positions is None:
             return
 
-        positions = list(msg.position)
-
-        if not all(math.isfinite(x) for x in positions):
-            return
-
-        commanded = list(msg.cmdedposition)
-        if len(commanded) != 7 or not all(math.isfinite(x) for x in commanded):
-            commanded = positions
+        commanded = safety.valid_joints(msg.cmdedposition) or positions
 
         self.panda_position = positions
         self.panda_commanded = commanded
         self.panda_time = time.monotonic()
 
     def gello_callback(self, msg):
-        if len(msg.position) != 7:
+        positions = safety.valid_joints(msg.position)
+        if positions is None:
             return
 
-        positions = list(msg.position)
-
-        if not all(math.isfinite(x) for x in positions):
-            return
-
-        jumped = self.gello_position is not None and any(
-            abs(current - previous) > self.max_sample_change
-            for current, previous in zip(positions, self.gello_position)
-        )
+        jumped = safety.joint_jumped(
+            positions, self.gello_position, self.max_sample_change)
 
         self.gello_position = positions
         self.gello_time = time.monotonic()
@@ -272,7 +270,8 @@ class GelloCalibrator(Node):
         if not self.enabled:
             return
 
-        targets = self.clip_to_limits(positions)
+        targets = safety.clip_to_limits(
+            positions, self.panda_lower, self.panda_upper)
 
         output = JointState()
         output.header.stamp = self.get_clock().now().to_msg()
@@ -286,8 +285,7 @@ class GelloCalibrator(Node):
         if not math.isfinite(msg.data):
             return
 
-        self.gripper_value = min(max(float(msg.data), 0.0), 1.0)
-        self.gripper_time = time.monotonic()
+        self.gripper.set_trigger(msg.data, time.monotonic())
 
     def gripper_state_callback(self, msg):
         # The sim shares this topic with the platform: look the joint up
@@ -298,41 +296,14 @@ class GelloCalibrator(Node):
         if index >= len(msg.position) or not math.isfinite(msg.position[index]):
             return
 
-        self.gripper_width = 2.0 * msg.position[index]
-        self.gripper_width_time = time.monotonic()
-
-    def trigger_width(self):
-        return self.gripper_max_width * (1.0 - self.gripper_value)
+        # One finger: half the width
+        self.gripper.set_width(2.0 * msg.position[index], time.monotonic())
 
     def gripper_check(self):
         """Whether the trigger lets control start: (ok, problem, hint)."""
-        # No gripper control, or a GELLO without trigger
-        if not self.gripper_service or self.gripper_time is None:
+        if not self.gripper_service:
             return True, None, None
-
-        if (self.gripper_width_time is None
-                or time.monotonic() - self.gripper_width_time
-                >= self.gripper_state_timeout):
-            return (False,
-                    f"No gripper width on {self.gripper_state_topic}.",
-                    "gripper state unavailable")
-
-        # A grasp only closes the gripper, so it can't drop anything
-        if (self.gripper_grasp
-                and self.gripper_value >= self.gripper_grasp_threshold):
-            return True, None, None
-
-        difference = self.trigger_width() - self.gripper_width
-        if abs(difference) <= self.gripper_enable_tolerance:
-            return True, None, None
-
-        # A positive difference: the trigger asks for a wider gripper
-        action = "press the trigger" if difference > 0 else "release the trigger"
-        return (False,
-                f"Trigger doesn't match the gripper: "
-                f"{difference * 1000:+.0f} mm (tolerance "
-                f"{self.gripper_enable_tolerance * 1000:.0f} mm).",
-                f"gripper {abs(difference) * 1000:.0f} mm, {action}")
+        return self.gripper.enable_check(time.monotonic())
 
     def update_gripper(self):
         if not self.gripper_service:
@@ -350,10 +321,8 @@ class GelloCalibrator(Node):
             else:
                 return
 
-        if not self.enabled or self.gripper_time is None:
-            return
-
-        if now - self.gripper_time >= self.data_timeout:
+        if not self.enabled or not self.gripper.trigger_fresh(
+                now, self.data_timeout):
             return
 
         if not self.gripper_client.service_is_ready():
@@ -366,44 +335,21 @@ class GelloCalibrator(Node):
 
         self.gripper_warned = False
 
-        if self.gripper_grasp:
-            if self.gripper_grasping:
-                # Hold until the trigger is released past the hysteresis
-                if self.gripper_value >= self.gripper_grasp_release:
-                    return
-                self.gripper_grasping = False
-                self.gripper_width_sent = None
-            elif self.gripper_value >= self.gripper_grasp_threshold:
-                # Close on whatever is between the fingers: with width 0 and
-                # epsilon_outer at full width, any final width succeeds
-                self.send_gripper(
-                    "grasp", 0.0, force=self.gripper_grasp_force,
-                    epsilon_inner=0.005, epsilon_outer=self.gripper_max_width)
-                self.gripper_grasping = True
-                return
+        command = self.gripper.next_command()
+        if command is not None:
+            self.send_gripper(command)
 
-        width = self.trigger_width()
-
-        if (self.gripper_width_sent is not None
-                and abs(width - self.gripper_width_sent)
-                < self.gripper_min_change):
-            return
-
-        self.send_gripper("move", width)
-        self.gripper_width_sent = width
-
-    def send_gripper(self, cmd, width, force=0.0, epsilon_inner=0.0,
-                     epsilon_outer=0.0):
+    def send_gripper(self, command):
         request = Pandagripper.Request()
-        request.cmd = cmd
-        request.width = float(width)
+        request.cmd = command.cmd
+        request.width = float(command.width)
         request.speed = float(self.gripper_speed)
-        request.force = float(force)
-        request.epsilon_inner = float(epsilon_inner)
-        request.epsilon_outer = float(epsilon_outer)
+        request.force = float(command.force)
+        request.epsilon_inner = float(command.epsilon_inner)
+        request.epsilon_outer = float(command.epsilon_outer)
 
         self.gripper_future = self.gripper_client.call_async(request)
-        self.gripper_cmd_sent = cmd
+        self.gripper_cmd_sent = command.cmd
         self.gripper_call_time = time.monotonic()
 
     def gripper_done(self, future):
@@ -419,22 +365,10 @@ class GelloCalibrator(Node):
                 f"Gripper {self.gripper_cmd_sent} failed: {result}"
             )
 
-    def clip_to_limits(self, positions):
-        return [
-            max(low, min(high, position))
-            for position, low, high in zip(
-                positions, self.panda_lower, self.panda_upper
-            )
-        ]
-
     def pose_differences(self):
-        # What the Panda would be commanded minus where it is, per joint
-        return [
-            target - actual
-            for target, actual in zip(
-                self.clip_to_limits(self.gello_position), self.panda_position
-            )
-        ]
+        return safety.pose_differences(
+            self.gello_position, self.panda_position,
+            self.panda_lower, self.panda_upper)
 
     def publish_posref(self, position):
         command = PosRef()
@@ -456,19 +390,10 @@ class GelloCalibrator(Node):
 
     def stale_sources(self):
         """Which inputs are missing or older than data_timeout, and why."""
-        now = time.monotonic()
-        stale = []
-
-        for name, topic, stamp in (
-            ("GELLO", self.gello_topic, self.gello_time),
-            ("Panda state", self.panda_state_topic, self.panda_time),
-        ):
-            if stamp is None:
-                stale.append(f"{name} ({topic}): no data yet")
-            elif now - stamp >= self.data_timeout:
-                stale.append(f"{name} ({topic}): {now - stamp:.2f} s old")
-
-        return stale
+        return safety.stale_sources(
+            [("GELLO", self.gello_topic, self.gello_time),
+             ("Panda state", self.panda_state_topic, self.panda_time)],
+            time.monotonic(), self.data_timeout)
 
     def data_fresh(self):
         return not self.stale_sources()
@@ -516,9 +441,7 @@ class GelloCalibrator(Node):
             return response
 
         self.enabled = True
-        # The gripper may have moved while disabled: command it again
-        self.gripper_width_sent = None
-        self.gripper_grasping = False
+        self.gripper.reset()
 
         response.success = True
         response.message = "GELLO control enabled."

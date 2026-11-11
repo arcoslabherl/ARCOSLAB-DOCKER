@@ -12,6 +12,11 @@ software is needed.
 - `gello_get_offset`: measures a new GELLO unit's calibration.
 - `config/gello_panda.yaml`: all parameters.
 
+The nodes only do the ROS part. The logic they rely on is in modules
+without ROS, covered by the unit tests in `test/`: `conversion.py`
+(servo angles to joints), `safety.py` (limits, pose match, jumps,
+timeouts) and `gripper.py` (trigger to gripper commands).
+
 Run every `make` command from `tower/panda_sim/`, with the
 container set up as in the [simulator README](../../README.md)
 (sections 1 to 4).
@@ -127,7 +132,16 @@ if the trigger doesn't match the gripper.
 
 ## Test
 
-With `make sim-teleop` and `make gello-fake` running:
+Unit tests, in a second, with only the container running:
+
+    make test-unit
+
+They also read `config/gello_panda.yaml`, so a broken calibration or
+wrong joint limits there fail too. Run them after changing the
+package's logic.
+
+The whole pipeline, with `make sim-teleop` and `make gello-fake`
+running:
 
     make test-gello
 
