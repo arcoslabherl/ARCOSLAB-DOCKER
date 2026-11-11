@@ -1,7 +1,7 @@
 # GELLO -> Franka Panda teleoperation configuration.
 #
 # Values here are loaded by launch/gello.launch.py. With --symlink-install
-# (used by build_ws.sh) edits take effect on the next launch, no rebuild.
+# (used by scripts/build_ws.sh) edits take effect on the next launch, no rebuild.
 # The serial port and backend are launch arguments (see the Makefile).
 
 gello_driver:
@@ -69,13 +69,14 @@ gello_calibrator:
     # Gripper: while enabled, the trigger (0 open .. 1 closed) commands a
     # width of gripper_max_width .. 0 with 'move'. The service blocks until
     # the move ends, so one call at a time, and only when the width changed
-    # by gripper_min_change (the sim's 'move' stops within 5 mm anyway).
+    # by gripper_min_change. Small steps keep each call short, so the gripper
+    # follows the trigger closely.
     # Set gripper_service to "" to leave the gripper alone.
     gripper_topic: /gello/gripper
     gripper_service: /sim_asimilar_01/panda_arm/gripper
     gripper_max_width: 0.08     # m, fully open
-    gripper_min_change: 0.005   # m
-    gripper_speed: 0.05         # m/s
+    gripper_min_change: 0.001   # m
+    gripper_speed: 0.1          # m/s, check against the Franka Hand's maximum
     gripper_call_timeout: 5.0   # s, then a stuck call is given up
 
     # Gripper width, for the enable check: the trigger must match it within
@@ -85,7 +86,7 @@ gello_calibrator:
     gripper_state_topic: /sim_asimilar_01/joint_states
     gripper_state_joint: panda_j7
     gripper_state_timeout: 1.0      # s
-    gripper_enable_tolerance: 0.015 # m (the sim's 'move' alone allows 5 mm)
+    gripper_enable_tolerance: 0.015 # m
 
     # Grasp: pressing the trigger past gripper_grasp_threshold sends a
     # 'grasp' (closes with gripper_grasp_force until it holds something),

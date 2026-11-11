@@ -1,20 +1,26 @@
 diff --git a/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py b/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
-index 9c14a45..73d636a 100644
+index 310c2cb..b98dfa2 100644
 --- a/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
 +++ b/arcos-lab-asimilar-robot-startup/launch/arcos-lab-asimilar-robot-startup-sim.launch.py
-@@ -6,7 +6,7 @@ from launch_ros.actions import Node
+@@ -4,8 +4,9 @@ import launch.substitutions
+ import launch_ros.actions
+ from launch_ros.actions import Node
  from launch.actions import DeclareLaunchArgument
- from launch.conditions import IfCondition
++from launch.conditions import IfCondition
  from launch.launch_description_sources import PythonLaunchDescriptionSource
 -from launch.substitutions import LaunchConfiguration
 +from launch.substitutions import LaunchConfiguration, PythonExpression
  from ament_index_python.packages import get_package_share_directory
  import subprocess
  import sys
-@@ -70,6 +70,18 @@ def generate_launch_description():
-             'use_rbc',
-             default_value='true',
-             description='Start RBC. Without it, another node commands the arm'),
+@@ -65,6 +66,22 @@ def generate_launch_description():
+             'use_sim_time',
+             default_value='false',
+             description='Use simulation (Gazebo) clock if true'),
++        DeclareLaunchArgument(
++            'use_rbc',
++            default_value='true',
++            description='Start RBC. Without it, another node commands the arm'),
 +        DeclareLaunchArgument(
 +            'arm_max_velocity',
 +            default_value='1.0',
@@ -30,7 +36,22 @@ index 9c14a45..73d636a 100644
          # Node(
          #     package='tf2_ros',
          #     executable="static_transform_publisher",
-@@ -143,9 +155,12 @@ def generate_launch_description():
+@@ -130,17 +147,23 @@ def generate_launch_description():
+                  'kqi': [0.1] * panda_num_joints,
+                  'kqd': [16.0] * panda_num_joints,
+                  'stiffness': [0.1] * panda_num_joints,
+-                 'ctrl_joint_limits_low':
+-                 [-160.0*pi/180.0] * panda_num_joints,
+-                 'ctrl_joint_limits_high':
+-                 [160.0*pi/180.0] * panda_num_joints,
++                 # Franka Panda joint position limits (rad), J1..J7, as in
++                 # the URDF. The node reads ctrl_joints_limits_*: it ignored
++                 # the old ctrl_joint_limits_* and used its +-170 default.
++                 'ctrl_joints_limits_low':
++                 [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973],
++                 'ctrl_joints_limits_high':
++                 [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973],
+                  'q_ke_i_lim': [0.01] * panda_num_joints,
                   'effort_ref_max': [10.0] * panda_num_joints,
                   'ctrl_viscous_friction': [0.5] * panda_num_joints,
                   'use_ruckig': True,
@@ -46,3 +67,11 @@ index 9c14a45..73d636a 100644
                   'sim_pandagripper': True,
                   'gripper_name': gripper_name},
  
+@@ -171,6 +194,7 @@ def generate_launch_description():
+         Node(
+             package='rbc',
+             executable='rbc',
++            condition=IfCondition(LaunchConfiguration('use_rbc')),
+             # name='rbc',
+             namespace=namespace,
+             output='screen',

@@ -17,6 +17,8 @@
   <exec_depend>panda_topics_msgs_srvs</exec_depend>
   <!-- dynamixel-sdk (pip, pinned) and python3-serial are installed by the Dockerfile -->
 
+  <test_depend>python3-pytest</test_depend>
+
   <export>
     <build_type>ament_python</build_type>
   </export>

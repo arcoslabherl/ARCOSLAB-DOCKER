@@ -28,6 +28,7 @@ from rclpy.parameter import Parameter
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float32
 
+from gello_teleop import conversion
 from gello_teleop.backends import DynamixelBackend, FakeBackend
 
 
@@ -161,38 +162,26 @@ class GelloDriver(Node):
         self.get_logger().info("GELLO driver ready.")
 
     def convert(self, raw):
-        joints = [
-            sign * (angle - offset)
-            for angle, offset, sign in zip(raw, self.offsets, self.signs)
-        ]
+        joints = conversion.raw_to_joints(
+            raw[:NUM_JOINTS], self.offsets, self.signs)
 
         if self.turns is None:
             reference = self.last_values or self.reference_pose
-            self.turns = [
-                round((target - joint) / math.tau)
-                for target, joint in zip(reference, joints)
-            ]
+            self.turns = conversion.turns_to(joints, reference)
             for index, turns in enumerate(self.turns, start=1):
                 if turns != 0:
                     self.get_logger().info(
                         f"J{index}: shifted {turns:+d} turn(s) from its raw "
                         "servo angle")
 
-        values = [
-            joint + turns * math.tau
-            for joint, turns in zip(joints, self.turns)
-        ]
+        values = conversion.apply_turns(joints, self.turns)
 
         if self.has_gripper:
-            gripper = (raw[NUM_JOINTS] - self.gripper_open) / (
-                self.gripper_closed - self.gripper_open)
-            values.append(min(max(gripper, 0.0), 1.0))
+            values.append(conversion.gripper_fraction(
+                raw[NUM_JOINTS], self.gripper_open, self.gripper_closed))
 
         if self.last_values is not None:
-            values = [
-                last * (1.0 - self.alpha) + value * self.alpha
-                for last, value in zip(self.last_values, values)
-            ]
+            values = conversion.smooth(self.last_values, values, self.alpha)
 
         self.last_values = values
         return values

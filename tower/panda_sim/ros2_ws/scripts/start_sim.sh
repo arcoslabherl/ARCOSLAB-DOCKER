@@ -37,7 +37,7 @@ echo "Starting Franka Panda simulator..."
 # Wait for a service of the simulator or RBC to become available
 wait_for_service() {
     for attempt in $(seq 1 30); do
-        if ros2 service list | grep -Fxq "$1"; then
+        if timeout 10 ros2 service list | grep -Fxq "$1"; then
             return 0
         fi
 
@@ -77,7 +77,7 @@ else
     (
         wait_for_service "${NAMESPACE}/rbc_l2_ctrl" || exit 1
 
-        bash /ros2_ws/setup_jr.sh
+        bash /ros2_ws/scripts/setup_jr.sh
     ) &
 fi
 

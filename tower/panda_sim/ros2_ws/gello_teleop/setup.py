@@ -16,6 +16,7 @@ setup(
         ('share/' + package_name + '/launch', glob('launch/*.launch.py')),
     ],
     install_requires=['setuptools'],
+    tests_require=['pytest'],
     zip_safe=True,
     maintainer='ARCoS-Lab',
     maintainer_email='aguterralgo@gmail.com',

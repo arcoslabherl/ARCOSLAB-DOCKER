@@ -67,7 +67,7 @@ create_controller() {
             return 1
         fi
 
-        ros2 param set "$node" joints "['${joint}']"
+        timeout 10 ros2 param set "$node" joints "['${joint}']"
 
     elif ! grep -q "Already exists" <<< "$result"; then
         echo "ERROR: Controller ${jr_name} creation failed."
@@ -85,8 +85,8 @@ create_controller() {
         return 1
     fi
 
-    ros2 param set "$node" joint_speed_limits "[0.1]"
-    ros2 param set "$node" weight 1.0
+    timeout 10 ros2 param set "$node" joint_speed_limits "[0.1]"
+    timeout 10 ros2 param set "$node" weight 1.0
 }
 
 send_goal() {
@@ -100,13 +100,22 @@ send_goal() {
 
     local output
 
-    if ! output=$(ros2 action send_goal \
+    # The goal itself times out after 15 s. The outer timeout covers a
+    # result that never arrives (seen once: the client waited forever).
+    local status=0
+    output=$(timeout 30 ros2 action send_goal \
         "$action" \
         "$ACTION_TYPE" \
-        "{goal: [{joint: ${joint}, value: ${target}}], precision: 0.01, timeout: {sec: 15, nanosec: 0}}" 2>&1); then
+        "{goal: [{joint: ${joint}, value: ${target}}], precision: 0.01, timeout: {sec: 15, nanosec: 0}}" 2>&1) \
+        || status=$?
 
+    if (( status != 0 )); then
         echo "$output"
-        echo "ERROR: ROS 2 action command failed."
+        if (( status == 124 )); then
+            echo "ERROR: No action result after 30 s."
+        else
+            echo "ERROR: ROS 2 action command failed."
+        fi
         return 1
     fi
 
