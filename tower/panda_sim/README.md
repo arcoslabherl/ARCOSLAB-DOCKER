@@ -77,6 +77,18 @@ Expected result:
 
     Full Panda test SUCCEEDED
 
+To run every simulator test unattended, with nothing else running:
+
+    make test-sim                 # all tests, about 2.5 min
+    make test-sim ONLY=rbc        # only this section's tests
+    make test-sim ONLY=teleop     # only the GELLO test (fake device)
+
+It starts the simulator (and the fake GELLO) itself, waits until they
+are ready, runs the tests and stops everything again, also on Ctrl+C.
+Expected result:
+
+    Simulator tests SUCCEEDED
+
 ## 7. Verify ROS 2
 
 Enter the container:

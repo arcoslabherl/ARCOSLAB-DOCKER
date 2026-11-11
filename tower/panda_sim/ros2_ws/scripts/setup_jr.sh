@@ -52,12 +52,12 @@ if [ "$JR_READY" != "true" ]; then
 fi
 
 # Configure first Panda joint
-ros2 param set "$JR_NODE" joints "['panda_j0']"
+timeout 10 ros2 param set "$JR_NODE" joints "['panda_j0']"
 
 # Conservative joint velocity limit
-ros2 param set "$JR_NODE" joint_speed_limits "[0.1]"
+timeout 10 ros2 param set "$JR_NODE" joint_speed_limits "[0.1]"
 
 # Enable controller contribution
-ros2 param set "$JR_NODE" weight 1.0
+timeout 10 ros2 param set "$JR_NODE" weight 1.0
 
 echo "Joint Reacher initialized successfully."

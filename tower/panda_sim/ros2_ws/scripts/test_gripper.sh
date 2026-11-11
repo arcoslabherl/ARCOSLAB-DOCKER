@@ -19,13 +19,21 @@ move_gripper() {
     echo "Moving gripper to ${width} m..."
 
     local output
+    local status=0
 
-    output=$(ros2 service call \
+    # A 0.04 m move at 0.02 m/s takes about 2 s
+    output=$(timeout 20 ros2 service call \
         "$SERVICE" \
         "$SERVICE_TYPE" \
-        "{cmd: 'move', width: ${width}, speed: 0.02, force: 0.0, epsilon_inner: 0.005, epsilon_outer: 0.005}")
+        "{cmd: 'move', width: ${width}, speed: 0.02, force: 0.0, epsilon_inner: 0.005, epsilon_outer: 0.005}") \
+        || status=$?
 
     echo "$output"
+
+    if (( status == 124 )); then
+        echo "ERROR: No gripper response after 20 s."
+        return 1
+    fi
 
     if [[ "$output" != *"result='Success'"* ]]; then
         echo "ERROR: Gripper movement failed."
@@ -38,7 +46,7 @@ echo "Franka Panda - Gripper Test"
 echo "=================================="
 
 # Check service availability
-if ! ros2 service list | grep -Fxq "$SERVICE"; then
+if ! timeout 15 ros2 service list | grep -Fxq "$SERVICE"; then
     echo "ERROR: Gripper service unavailable."
     exit 1
 fi

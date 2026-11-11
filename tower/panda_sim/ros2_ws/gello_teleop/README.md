@@ -134,6 +134,9 @@ Expected result:
 
     GELLO pipeline test SUCCEEDED
 
+Or, with nothing running, `make test-sim ONLY=teleop` starts the
+simulator and the fake GELLO, runs the test and stops them.
+
 ## Measure the delay
 
 `ros2_ws/tools/latency.py` measures how far the Panda lags behind
