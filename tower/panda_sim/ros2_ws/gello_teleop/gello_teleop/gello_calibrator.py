@@ -454,16 +454,24 @@ class GelloCalibrator(Node):
         if self.panda_commanded is not None:
             self.publish_posref(self.panda_commanded)
 
-    def data_fresh(self):
+    def stale_sources(self):
+        """Which inputs are missing or older than data_timeout, and why."""
         now = time.monotonic()
+        stale = []
 
-        if self.gello_time is None or self.panda_time is None:
-            return False
+        for name, topic, stamp in (
+            ("GELLO", self.gello_topic, self.gello_time),
+            ("Panda state", self.panda_state_topic, self.panda_time),
+        ):
+            if stamp is None:
+                stale.append(f"{name} ({topic}): no data yet")
+            elif now - stamp >= self.data_timeout:
+                stale.append(f"{name} ({topic}): {now - stamp:.2f} s old")
 
-        return (
-            now - self.gello_time < self.data_timeout
-            and now - self.panda_time < self.data_timeout
-        )
+        return stale
+
+    def data_fresh(self):
+        return not self.stale_sources()
 
     def enable_callback(self, request, response):
         if not request.data:
@@ -474,9 +482,10 @@ class GelloCalibrator(Node):
             response.message = "GELLO control disabled."
             return response
 
-        if not self.data_fresh():
+        stale = self.stale_sources()
+        if stale:
             response.success = False
-            response.message = "GELLO or Panda data unavailable."
+            response.message = f"Data unavailable: {'; '.join(stale)}."
             return response
 
         if self.other_commander():
@@ -516,11 +525,12 @@ class GelloCalibrator(Node):
         return response
 
     def check_safety(self):
-        if self.enabled and not self.data_fresh():
+        stale = self.stale_sources() if self.enabled else []
+        if stale:
             self.disable()
 
             self.get_logger().warning(
-                "Communication timeout. GELLO disabled."
+                f"Communication timeout: {'; '.join(stale)}. GELLO disabled."
             )
 
         if self.enabled and self.other_commander():

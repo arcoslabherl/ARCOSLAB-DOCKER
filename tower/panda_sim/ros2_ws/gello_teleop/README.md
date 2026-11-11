@@ -104,7 +104,8 @@ blocks the gripper.
 
 Control disables itself and stops the arm if:
 
-- GELLO or Panda data stops for 0.3 s
+- GELLO or Panda data stops for 0.3 s (the message says which one,
+  and how old its last data is)
 - another node starts publishing `posref`
 - a GELLO joint jumps more than 0.5 rad between two readings
 
@@ -133,6 +134,9 @@ With `make sim-teleop` and `make gello-fake` running:
 Expected result:
 
     GELLO pipeline test SUCCEEDED
+
+Or, with nothing running, `make test-sim ONLY=teleop` starts the
+simulator and the fake GELLO, runs the test and stops them.
 
 ## Measure the delay
 

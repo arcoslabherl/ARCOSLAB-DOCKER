@@ -57,7 +57,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build run debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
@@ -77,6 +77,7 @@ help:
 	@echo "  make gello-disable  Disable GELLO control"
 	@echo "  make gello-offsets GELLO_SIGNS=\"1 -1 ...\"  Calibrate a GELLO unit"
 	@echo "  make test-gello     Test the GELLO pipeline (needs sim-teleop + gello)"
+	@echo "  make test-sim [ONLY=rbc|teleop]  Start the simulator, run its tests, stop it"
 	@echo "  make latency-record REC=name [DURATION=60]  Record a GELLO session"
 	@echo "  make latency-replay REC=name RUN=name       Replay it to the sim"
 	@echo "  make latency-analyze FILES=\"name ...\"      Delay, lag and overshoot"
@@ -174,6 +175,10 @@ gello-offsets:
 test-gello:
 	docker exec -it $(CONTAINER_NAME) bash \
 		/ros2_ws/scripts/test_gello.sh
+
+# Unattended: starts what each test needs and stops it afterwards
+test-sim:
+	$(call exec_session,/ros2_ws/scripts/test_sim.sh $(or $(ONLY),all))
 
 # Latency measurements (tools/latency.py). Files go to ros2_ws/tools/data/.
 LATENCY = docker exec -it -e HOST_UID=$(shell id -u) -e HOST_GID=$(shell id -g) \
