@@ -104,7 +104,8 @@ blocks the gripper.
 
 Control disables itself and stops the arm if:
 
-- GELLO or Panda data stops for 0.3 s
+- GELLO or Panda data stops for 0.3 s (the message says which one,
+  and how old its last data is)
 - another node starts publishing `posref`
 - a GELLO joint jumps more than 0.5 rad between two readings
 
