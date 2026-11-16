@@ -16,6 +16,15 @@ if [ "$1" == "--patched" ]; then
 fi
 [ -x "$BIN" ] || { echo "Build it first: make real-driver-build"; exit 1; }
 
+# The driver connects before main() and waits a long time, silently, if the
+# robot isn't there. Desk's HTTPS port answers once the controller is reachable.
+if ! timeout 3 bash -c "</dev/tcp/172.16.0.2/443" 2>/dev/null; then
+    echo "The Panda doesn't answer at 172.16.0.2. Check the cable (Control's"
+    echo "LAN port), this computer's address (172.16.0.1/24) and that Desk opens."
+    echo "If Desk works but this check doesn't, run '$BIN' directly."
+    exit 1
+fi
+
 # The driver connects as soon as it starts and homes the gripper: the
 # fingers open and close. The arm only moves once it's enabled.
 echo "The driver connects to the Panda at 172.16.0.2 and HOMES THE GRIPPER"

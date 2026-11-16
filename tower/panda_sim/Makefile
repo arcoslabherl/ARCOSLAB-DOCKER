@@ -72,7 +72,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex real-driver-build rt-check real-driver latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex real-driver-build rt-check robot-echo robot-comm-test real-driver latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
@@ -104,6 +104,8 @@ help:
 	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
 	@echo "  make real-driver-build  Build the real driver, plain and patched (REAL=1 container)"
 	@echo "  make rt-check       Check libfranka's real-time requirements (REAL=1 container)"
+	@echo "  make robot-echo     Print the real Panda's state 100 times (no motion)"
+	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
 	@echo "  make real-driver [PATCHED=1]  Run the real driver on the real Panda"
 	@echo "  make stop           Stop Docker container"
 
@@ -259,6 +261,7 @@ test-reflex:
 # The real Panda (tools/real_robot/). Needs the real image: 'make run REAL=1'.
 # PATCHED=1 uses the driver with patches/panda_driver_safety.patch.
 REAL_ROBOT = /ros2_ws/tools/real_robot
+ROBOT_IP ?= 172.16.0.2
 
 real-driver-build:
 	docker cp patches/$(DRIVER_PATCH) $(CONTAINER_NAME):/tmp/$(DRIVER_PATCH)
@@ -266,6 +269,12 @@ real-driver-build:
 
 rt-check:
 	docker exec $(CONTAINER_NAME) /ros2_ws/build/_real_robot/rt_check
+
+robot-echo:
+	$(call exec_session,$(REAL_ROBOT)/examples.sh echo $(ROBOT_IP))
+
+robot-comm-test:
+	$(call exec_session,$(REAL_ROBOT)/examples.sh comm $(ROBOT_IP))
 
 real-driver:
 	$(call exec_session,$(REAL_ROBOT)/run_driver.sh $(if $(PATCHED),--patched))
