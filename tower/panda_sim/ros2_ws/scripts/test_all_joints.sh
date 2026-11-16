@@ -16,7 +16,7 @@ NS="/sim_asimilar_01"
 ACTION_TYPE="rbc_actions/action/JointReacher"
 
 # Initial positions from the simulated Panda
-HOME=(0.0 0.0 0.0 -1.57 0.0 1.57 0.71)
+HOME_POSE=(0.0 0.0 0.0 -1.57 0.0 1.57 0.71)
 
 # Small test movements
 TARGET=(0.1 0.1 0.1 -1.47 0.1 1.47 0.61)
@@ -151,7 +151,7 @@ for index in {0..6}; do
     echo "=================================="
 
     send_goal "$index" "${TARGET[$index]}"
-    send_goal "$index" "${HOME[$index]}"
+    send_goal "$index" "${HOME_POSE[$index]}"
 
     echo "J$((index + 1)): PASSED"
 done
