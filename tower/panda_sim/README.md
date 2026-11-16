@@ -166,7 +166,9 @@ Panda) and real-time limits. The host needs a PREEMPT_RT kernel.
     make real-driver-build
     make rt-check
 
-See `ros2_ws/tools/real_robot/README.md`.
+Teleoperation: `make real-driver`, `make robot-enable`,
+`make gello ROBOT=real`, `make gello-enable`. See
+`ros2_ws/tools/real_robot/README.md`.
 
 ## Project structure
 

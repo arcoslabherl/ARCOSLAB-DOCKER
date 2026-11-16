@@ -27,6 +27,10 @@ GELLO_GROUP = $(if $(wildcard $(GELLO_PORT)),--group-add $(shell stat -Lc %g $(G
 # (build/, install/, log/, __pycache__, tools/data/) are the user's, not root's.
 HOST_USER = --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 
+# Which Panda 'make gello' commands: sim, or real (the lab driver,
+# 'make real-driver'; config/panda_real.yaml on top of gello_panda.yaml)
+ROBOT ?= sim
+
 # Arm limits of 'make sim-teleop' (rad/s, rad/s^2, rad/s^3). The defaults
 # match the real robot's driver, so the simulator shows the response it
 # would have.
@@ -72,7 +76,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex real-driver-build rt-check robot-echo robot-comm-test real-driver latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
@@ -88,7 +92,7 @@ help:
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
 	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
-	@echo "  make gello          Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
+	@echo "  make gello [ROBOT=real]  Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
 	@echo "  make gello-enable   Enable GELLO control"
 	@echo "  make gello-disable  Disable GELLO control"
@@ -102,11 +106,14 @@ help:
 	@echo "  make fake-driver-build  Build the real Panda driver on a fake libfranka"
 	@echo "  make test-driver [PATCHED=1]  Test the real driver on the fake libfranka"
 	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
+	@echo "  make test-robot-mode [PATCHED=1]  Test robot-enable/robot-disable (fake robot)"
 	@echo "  make real-driver-build  Build the real driver, plain and patched (REAL=1 container)"
 	@echo "  make rt-check       Check libfranka's real-time requirements (REAL=1 container)"
 	@echo "  make robot-echo     Print the real Panda's state 100 times (no motion)"
 	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
 	@echo "  make real-driver [PATCHED=1]  Run the real driver on the real Panda"
+	@echo "  make robot-enable   Enable the driver (it holds the arm's pose)"
+	@echo "  make robot-disable  Disable the driver (refused while GELLO controls or the arm moves)"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -193,10 +200,10 @@ test-panda: test-all-joints test-gripper
 	@echo "Full Panda test SUCCEEDED"
 
 gello:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT) $(ROBOT))
 
 gello-fake:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake)
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT))
 
 gello-enable:
 	docker exec -it $(CONTAINER_NAME) bash -c \
@@ -258,10 +265,14 @@ test-driver:
 test-reflex:
 	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_reflex.sh $(if $(PATCHED),--patched)
 
+test-robot-mode:
+	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_robot_mode.sh $(if $(PATCHED),--patched)
+
 # The real Panda (tools/real_robot/). Needs the real image: 'make run REAL=1'.
 # PATCHED=1 uses the driver with patches/panda_driver_safety.patch.
 REAL_ROBOT = /ros2_ws/tools/real_robot
 ROBOT_IP ?= 172.16.0.2
+ROBOT_NS ?= /asimilar/panda_arm
 
 real-driver-build:
 	docker cp patches/$(DRIVER_PATCH) $(CONTAINER_NAME):/tmp/$(DRIVER_PATCH)
@@ -278,6 +289,12 @@ robot-comm-test:
 
 real-driver:
 	$(call exec_session,$(REAL_ROBOT)/run_driver.sh $(if $(PATCHED),--patched))
+
+robot-enable:
+	$(call exec_session,$(REAL_ROBOT)/robot_mode.sh enable --ns $(ROBOT_NS))
+
+robot-disable:
+	$(call exec_session,$(REAL_ROBOT)/robot_mode.sh disable --ns $(ROBOT_NS))
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)

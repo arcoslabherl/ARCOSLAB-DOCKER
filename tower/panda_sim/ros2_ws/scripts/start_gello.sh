@@ -4,10 +4,11 @@ set -e
 # ARCoS-Lab - GELLO teleoperation
 # ROS 2 Humble
 #
-# Usage: start_gello.sh [dynamixel|fake] [serial port]
+# Usage: start_gello.sh [dynamixel|fake] [serial port] [sim|real]
 
 BACKEND="${1:-dynamixel}"
 PORT="${2:-/dev/ttyUSB0}"
+ROBOT="${3:-sim}"
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -33,8 +34,9 @@ if [[ -n "${SESSION_ID:-}" ]]; then
     ps -o pgid= -p $$ | tr -d ' ' > "/tmp/ros2_session.${SESSION_ID}"
 fi
 
-echo "Starting GELLO (${BACKEND} backend)..."
+echo "Starting GELLO (${BACKEND} backend, ${ROBOT} Panda)..."
 
 ros2 launch gello_teleop gello.launch.py \
     backend:="$BACKEND" \
-    port:="$PORT"
+    port:="$PORT" \
+    robot:="$ROBOT"

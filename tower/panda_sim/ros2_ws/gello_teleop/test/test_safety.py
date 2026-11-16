@@ -2,16 +2,62 @@ import math
 
 import pytest
 
-from config import CALIBRATOR
+from config import CALIBRATOR, HOME
 from gello_teleop import safety
 
 LOWER = CALIBRATOR["panda_joint_lower"]
 UPPER = CALIBRATOR["panda_joint_upper"]
+MARGIN = CALIBRATOR["joint_limit_margin"]
+
+# Where libfranka's communication_test leaves the real Panda (examples of
+# libfranka 0.8.0): the first pose the GELLO may have to match at the lab.
+COMM_TEST_POSE = [0.0, -math.pi / 4, 0.0, -3 * math.pi / 4, 0.0, math.pi / 2,
+                  math.pi / 4]
 
 
 def test_panda_limits_in_the_config_are_franka_s():
     assert LOWER == [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
     assert UPPER == [2.8973, 1.7628, 2.8973, -0.0698, 2.8973, 3.7525, 2.8973]
+
+
+def test_limits_with_margin_moves_both_sides_inward():
+    lower, upper = safety.limits_with_margin([-1.0, 0.0], [1.0, 2.0], 0.1)
+    assert lower == pytest.approx([-0.9, 0.1])
+    assert upper == pytest.approx([0.9, 1.9])
+
+
+def test_zero_margin_keeps_the_limits():
+    assert safety.limits_with_margin(LOWER, UPPER, 0.0) == (LOWER, UPPER)
+
+
+def test_negative_margin_is_rejected():
+    with pytest.raises(ValueError, match="negative"):
+        safety.limits_with_margin(LOWER, UPPER, -0.1)
+
+
+def test_margin_that_leaves_no_range_is_rejected():
+    with pytest.raises(ValueError, match="J4"):
+        # J4's range is 3.002 rad
+        safety.limits_with_margin(LOWER, UPPER, 1.6)
+
+
+def test_config_margin_keeps_away_from_franka_s_limits():
+    assert 0.05 <= MARGIN <= 0.2
+
+
+@pytest.mark.parametrize("pose", [HOME, COMM_TEST_POSE],
+                         ids=["sim home", "communication_test"])
+def test_known_poses_are_inside_the_margin(pose):
+    lower, upper = safety.limits_with_margin(LOWER, UPPER, MARGIN)
+    assert all(low <= q <= high for q, low, high in zip(pose, lower, upper))
+
+
+def test_gello_past_a_limit_is_clipped_to_the_margin():
+    lower, upper = safety.limits_with_margin(LOWER, UPPER, MARGIN)
+    past = [high + 0.5 for high in UPPER]
+    assert safety.clip_to_limits(past, lower, upper) == upper
+    assert all(high - target == pytest.approx(MARGIN)
+               for target, high in zip(upper, UPPER))
 
 
 @pytest.mark.parametrize("values", [
