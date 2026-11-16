@@ -11,6 +11,13 @@ ROS_SRC = $(ROS_WS)/src
 # It is passed to the container by 'make run' only if it exists then.
 GELLO_PORT ?= /dev/ttyUSB0
 GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_PORT),)
+# The container runs as the host user, so it needs the port's group
+# (uucp on Arch, dialout on Ubuntu). -L: by-id paths are symlinks.
+GELLO_GROUP = $(if $(wildcard $(GELLO_PORT)),--group-add $(shell stat -Lc %g $(GELLO_PORT)),)
+
+# The container runs as the host user, so the files it writes in the repo
+# (build/, install/, log/, __pycache__, tools/data/) are the user's, not root's.
+HOST_USER = --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 
 # Arm limits of 'make sim-teleop' (rad/s, rad/s^2, rad/s^3). The defaults
 # match the real robot's driver, so the simulator shows the response it
@@ -57,13 +64,14 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build run debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
 	@echo "  make .pull          Download simulator repositories"
 	@echo "  make .build         Build Docker image"
 	@echo "  make run            Start Docker container"
+	@echo "  make fix-owner      Give root-owned files in ros2_ws/ back to the host user"
 	@echo "  make debug          Open container terminal"
 	@echo "  make .colcon_build  Build ROS 2 workspace"
 	@echo "  make sim            Launch Franka Panda simulator (with RBC)"
@@ -111,21 +119,28 @@ help:
 	.
 
 run:
-	@xhost +si:localuser:root > /dev/null
+	@xhost +si:localuser:$(shell id -un) > /dev/null
 	@$(if $(GELLO_DEVICE),echo "GELLO found at $(GELLO_PORT).",echo "Note: no GELLO at $(GELLO_PORT). Plug it in and re-run 'make run' to use it.")
 	docker run \
 	--detach \
 	--rm \
 	--init \
 	--network=host \
+	$(HOST_USER) \
 	-e DISPLAY=$(DISPLAY) \
 	-e QT_X11_NO_MITSHM=1 \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
 	-v $(ROS_WS):/ros2_ws:rw \
 	$(GELLO_DEVICE) \
+	$(GELLO_GROUP) \
 	--name $(CONTAINER_NAME) \
 	$(TAG) \
 	bash -c "tail -f /dev/null"
+
+# Once, for files created when the container still ran as root
+fix-owner:
+	docker run --rm -v $(ROS_WS):/ros2_ws $(TAG) \
+		chown -R $(shell id -u):$(shell id -g) /ros2_ws
 
 debug:
 	docker exec -it $(CONTAINER_NAME) bash -c \
@@ -184,14 +199,13 @@ test-gello:
 test-sim:
 	$(call exec_session,/ros2_ws/scripts/test_sim.sh $(or $(ONLY),all))
 
-# No cache or bytecode files: they would be root-owned in the repo
+# No cache or bytecode files left in the repo
 test-unit:
 	docker exec -it -e PYTHONDONTWRITEBYTECODE=1 $(CONTAINER_NAME) bash -c \
 		"cd /ros2_ws/gello_teleop && python3 -m pytest -q -p no:cacheprovider test"
 
 # Latency measurements (tools/latency.py). Files go to ros2_ws/tools/data/.
-LATENCY = docker exec -it -e HOST_UID=$(shell id -u) -e HOST_GID=$(shell id -g) \
-	$(CONTAINER_NAME) bash -c "$(ROS_SOURCE) && python3 /ros2_ws/tools/latency.py
+LATENCY = docker exec -it $(CONTAINER_NAME) bash -c "$(ROS_SOURCE) && python3 /ros2_ws/tools/latency.py
 DURATION ?= 60
 
 latency-record:

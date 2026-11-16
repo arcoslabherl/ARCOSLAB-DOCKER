@@ -69,22 +69,10 @@ def resolve(name, existing=False):
     return path
 
 
-def give_to_host_user(path):
-    # Files written in the container are root's; hand them to the host user
-    uid = os.environ.get("HOST_UID")
-    gid = os.environ.get("HOST_GID")
-    if uid and gid:
-        try:
-            os.chown(path, int(uid), int(gid))
-        except OSError:
-            pass
-
-
 def write_rows(path, rows):
     directory = os.path.dirname(path)
     if not os.path.isdir(directory):
         os.makedirs(directory)
-        give_to_host_user(directory)
 
     header = (["kind", "t"] + [f"q{i}" for i in range(NUM_JOINTS)]
               + [f"c{i}" for i in range(NUM_JOINTS)])
@@ -96,7 +84,6 @@ def write_rows(path, rows):
             row += ([f"{x:.6f}" for x in commanded] if commanded
                     else [""] * NUM_JOINTS)
             writer.writerow(row)
-    give_to_host_user(path)
 
 
 def read_rows(path):

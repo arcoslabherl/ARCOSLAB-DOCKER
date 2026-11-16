@@ -34,6 +34,9 @@ For another device:
 
 Pass the same `GELLO_PORT` to `make gello`.
 
+The container gets the port's group (`dialout` on Ubuntu, `uucp`
+on Arch), so it opens the GELLO without root.
+
 ## Configure the unit (once per GELLO)
 
 Each physical GELLO has its own joint offsets, signs and gripper

@@ -38,6 +38,13 @@ Docker image:
 
     make run
 
+The container runs as your user, so the files it writes in
+`ros2_ws/` stay yours. If a checkout has root-owned files from
+before (`build/`, `install/`, `log/`, `__pycache__`), fix them
+once, then rebuild (step 4):
+
+    make fix-owner
+
 Open an interactive terminal:
 
     make debug
