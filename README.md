@@ -96,8 +96,13 @@ make .colcon_build
 make sim          # simulator with RBC and a Joint Reacher
 ```
 
+The four setup steps are also one command: `make setup`. After a `git pull`,
+`make update`. `make help` lists the everyday commands.
+
 To control it with the GELLO instead, run `make sim-teleop` and `make gello`
 in separate terminals (see the [GELLO guide](tower/panda_sim/ros2_ws/gello_teleop/README.md)).
+A session step by step, in the simulator and on the real Panda:
+[TELEOP.md](tower/panda_sim/TELEOP.md).
 
 For subsequent sessions, rebuilding is not necessary unless source code or dependencies have changed.
 
