@@ -32,7 +32,11 @@ version that will run on the tower.
 make fake-driver-build           # fake lib + driver + patched driver
 make test-driver [PATCHED=1]     # the driver alone
 make test-reflex [PATCHED=1]     # a reflex during teleop, with the fake GELLO
+make test-robot-mode [PATCHED=1] # make robot-enable / robot-disable
 ```
+
+Both start the fake GELLO configured for the real robot
+(`robot:=real`, `config/panda_real.yaml`).
 
 - **`test_driver`:** state gaps during the first enable; disabling while J1
   moves fast (how far and how long it takes to stop); whether the arm moves by

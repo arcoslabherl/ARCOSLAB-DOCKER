@@ -84,3 +84,22 @@ Then the driver, named as in the lab's real launch (`/asimilar/panda_arm`):
 It asks for confirmation first: at startup the driver connects and homes the
 gripper, so the fingers open and close. The arm moves only after the driver's
 `control` service enables it.
+
+## Teleoperation, in order
+
+    make real-driver           # terminal 1
+    make robot-enable          # the driver holds the arm's current pose
+    make gello ROBOT=real      # terminal 2; match the pose it asks for
+    make gello-enable          # the arm follows the GELLO
+    ...
+    make gello-disable         # the arm stops where it is
+    make robot-disable         # only with the GELLO disabled and the arm still
+
+`make robot-enable` and `make robot-disable` call the driver's `control`
+service with the 8 values it reads (7 joints and the gripper; it doesn't check
+how many it gets). `robot-enable` asks for confirmation. `robot-disable`
+refuses while the GELLO controls the arm or while the arm moves: with the lab's
+original driver, a disable freezes the command in one cycle (a reflex) and the
+next enable starts with the stale velocity, so the arm moves by itself. Never
+use `robot-disable` as a stop button: use `make gello-disable`, or the e-stop.
+Both are tested against the fake libfranka (`make test-robot-mode`).

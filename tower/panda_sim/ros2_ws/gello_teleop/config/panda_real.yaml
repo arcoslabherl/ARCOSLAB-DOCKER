@@ -1,0 +1,26 @@
+# Real Panda: what changes from gello_panda.yaml. Loaded on top of it with
+# 'make gello ROBOT=real' (launch argument robot:=real). Everything else,
+# including the GELLO's calibration and the safety limits, comes from
+# gello_panda.yaml.
+#
+# The lab driver as 'make real-driver' starts it (and the lab's real launch):
+# namespace /asimilar, node panda_arm, joint_states remapped to
+# /asimilar/joint_states. Read from the driver's code, tested with the fake
+# libfranka ('make test-reflex'), not yet on the robot.
+
+gello_calibrator:
+  ros__parameters:
+    panda_state_topic: /asimilar/panda_arm/state
+    panda_status_topic: /asimilar/panda_arm/status
+    posref_topic: /asimilar/panda_arm/posref
+    gripper_service: /asimilar/panda_arm/gripper
+    # The driver publishes the gripper as panda_j7 (half the width) here, at
+    # 300 Hz, but reads the Hand only every 2 s.
+    gripper_state_topic: /asimilar/joint_states
+
+    # The real Hand's 'move' fails on contact: 'grasp' holds the object.
+    gripper_grasp: true
+    # The Hand's datasheet: 50 mm/s per finger. It isn't documented whether
+    # libfranka's speed is per finger or for the width, and 0.05 is within
+    # the limit either way. Raise it at the lab if 'move' at 0.1 works.
+    gripper_speed: 0.05         # m/s

@@ -11,6 +11,27 @@ def valid_joints(values, count=7):
     return values
 
 
+def limits_with_margin(lower, upper, margin):
+    """The joint limits moved inward by margin (rad), as (lower, upper).
+
+    The Panda stops with a reflex when a command reaches its joint limits, so
+    the targets keep this far away from them.
+    """
+    if margin < 0.0:
+        raise ValueError("joint_limit_margin can't be negative")
+    inner_lower = [low + margin for low in lower]
+    inner_upper = [high - margin for high in upper]
+    narrow = [
+        f"J{index}"
+        for index, (low, high) in enumerate(zip(inner_lower, inner_upper), 1)
+        if low >= high
+    ]
+    if narrow:
+        raise ValueError(
+            f"joint_limit_margin leaves no range on {', '.join(narrow)}")
+    return inner_lower, inner_upper
+
+
 def clip_to_limits(positions, lower, upper):
     return [
         max(low, min(high, position))

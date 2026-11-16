@@ -2,7 +2,7 @@
 """GELLO calibrator: turns GELLO joint angles into Panda commands.
 
 Absolute mapping: each joint's target is the GELLO's angle, clipped to the
-Panda's joint limits. Control only starts when the GELLO matches the Panda's
+Panda's joint limits minus a margin. Control only starts when the GELLO matches the Panda's
 pose, so the robot doesn't jump. While disabled, it logs how to move each
 joint that doesn't match yet, to guide the operator.
 
@@ -175,6 +175,7 @@ class GelloCalibrator(Node):
             "posref_topic": STRING,
             "panda_joint_lower": DOUBLES,
             "panda_joint_upper": DOUBLES,
+            "joint_limit_margin": DOUBLE,
             "enable_tolerance": DOUBLE,
             "max_sample_change": DOUBLE,
             "data_timeout": DOUBLE,
@@ -240,6 +241,10 @@ class GelloCalibrator(Node):
         if any(low >= high
                for low, high in zip(self.panda_lower, self.panda_upper)):
             raise ValueError("panda_joint_lower must be below upper")
+
+        # From here on, the limits the targets are clipped to
+        self.panda_lower, self.panda_upper = safety.limits_with_margin(
+            self.panda_lower, self.panda_upper, params["joint_limit_margin"])
 
         if self.enable_tolerance <= 0.0:
             raise ValueError("enable_tolerance must be positive")
@@ -545,7 +550,8 @@ class GelloCalibrator(Node):
             ]
             if at_limit:
                 self.get_logger().warning(
-                    f"At the Panda's joint limit: {', '.join(at_limit)}"
+                    f"At the joint limit (Panda's minus the margin): "
+                    f"{', '.join(at_limit)}"
                 )
             return
 

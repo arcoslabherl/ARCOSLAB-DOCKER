@@ -18,10 +18,9 @@ rm -f /tmp/fake_franka_reflex /tmp/fake_franka_summary
 # Each in its own process group, so cleanup stops the whole tree
 setsid "$HERE/run_driver.sh" "$@" > "$OUT/driver.out" 2>&1 &
 DRIVER=$!
-sed "s#/sim_asimilar_01/#/asimilar/#g; s#gripper_grasp: false#gripper_grasp: true#" \
-    /ros2_ws/gello_teleop/config/gello_panda.yaml > "$OUT/gello_asimilar.yaml"
-setsid ros2 launch gello_teleop gello.launch.py backend:=fake \
-    config:="$OUT/gello_asimilar.yaml" > "$OUT/gello.out" 2>&1 &
+# The GELLO configured for the real robot, as 'make gello ROBOT=real'
+setsid ros2 launch gello_teleop gello.launch.py backend:=fake robot:=real \
+    > "$OUT/gello.out" 2>&1 &
 GELLO=$!
 
 cleanup() {
