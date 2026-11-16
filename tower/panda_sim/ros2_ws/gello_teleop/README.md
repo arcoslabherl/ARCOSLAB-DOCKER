@@ -28,10 +28,6 @@ after `make run`. `make gello` and `make gello-offsets` find it
 by themselves. If they can't, they say whether the cable or the
 servos' power is missing.
 
-To force a port, e.g. with two GELLOs connected:
-
-    make gello GELLO_PORT=/dev/serial/by-id/usb-FTDI_...
-
 If the cable comes out, plug it back and restart `make gello`.
 
 The container gets the port's group (`dialout` on Ubuntu, `uucp`
