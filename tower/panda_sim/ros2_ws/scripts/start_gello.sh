@@ -7,19 +7,11 @@ set -e
 # Usage: start_gello.sh [dynamixel|fake] [serial port] [sim|real]
 
 BACKEND="${1:-dynamixel}"
-PORT="${2:-/dev/ttyUSB0}"
+PORT="${2:-auto}"   # auto: gello_find_port looks for the GELLO
 ROBOT="${3:-sim}"
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
-
-if [[ "$BACKEND" == "dynamixel" && ! -e "$PORT" ]]; then
-    echo "ERROR: GELLO not found at ${PORT} inside the container."
-    echo "Plug in the GELLO, then restart the container:"
-    echo "    make stop && make run GELLO_PORT=${PORT}"
-    echo "Or test without hardware:  make gello-fake"
-    exit 1
-fi
 
 # Refuse to start a second GELLO next to a running one
 if pgrep -f "gello_teleop/lib/gello_teleop/gello_" >/dev/null; then
@@ -27,6 +19,15 @@ if pgrep -f "gello_teleop/lib/gello_teleop/gello_" >/dev/null; then
     echo "Stop it with Ctrl+C in its terminal, or restart the container:"
     echo "    make stop && make run"
     exit 1
+fi
+
+# Find the GELLO, or check the given port. It may have been plugged in
+# after 'make run' (the host's /dev is at /hostdev).
+if [[ "$BACKEND" == "dynamixel" ]]; then
+    if ! PORT=$(ros2 run gello_teleop gello_find_port "$PORT"); then
+        echo "Or test without hardware:  make gello-fake"
+        exit 1
+    fi
 fi
 
 # Let the Makefile stop this session if its terminal is closed

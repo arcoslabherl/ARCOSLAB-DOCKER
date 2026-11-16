@@ -15,13 +15,20 @@ RT_LIMITS = $(if $(filter 1,$(REAL)),--ulimit rtprio=99 --ulimit memlock=-1,)
 ROS_WS = $(CURDIR)/ros2_ws
 ROS_SRC = $(ROS_WS)/src
 
-# GELLO serial device (a /dev/serial/by-id/... path also works).
-# It is passed to the container by 'make run' only if it exists then.
-GELLO_PORT ?= /dev/ttyUSB0
-GELLO_DEVICE = $(if $(wildcard $(GELLO_PORT)),--device=$(GELLO_PORT):$(GELLO_PORT),)
-# The container runs as the host user, so it needs the port's group
-# (uucp on Arch, dialout on Ubuntu). -L: by-id paths are symlinks.
-GELLO_GROUP = $(if $(wildcard $(GELLO_PORT)),--group-add $(shell stat -Lc %g $(GELLO_PORT)),)
+# GELLO serial port. Empty: 'make gello' finds the GELLO by itself
+# (gello_find_port). A path (/dev/ttyUSB0, /dev/serial/by-id/...) forces it.
+GELLO_PORT ?=
+GELLO_PORT_ARG = $(or $(GELLO_PORT),auto)
+# 'make run' shows the host's /dev at /hostdev, read-only, so a GELLO
+# plugged in later (or unplugged and plugged back) appears in the
+# container too. The cgroup rule lets it open only USB-serial adapters
+# (major 188, ttyUSB*: the GELLO's U2D2 is an FTDI).
+SERIAL_DEVICES = -v /dev:/hostdev:ro --device-cgroup-rule='c 188:* rmw'
+# The container runs as the host user, so it needs the serial ports'
+# group (dialout on Ubuntu, uucp on Arch). By name, since the GELLO may
+# not be plugged in yet; plus the group of any ttyUSB present now.
+SERIAL_GROUPS = $(foreach gid,$(sort $(shell getent group dialout uucp | cut -d: -f3) \
+	$(shell stat -Lc %g /dev/ttyUSB* 2>/dev/null)),--group-add $(gid))
 
 # The container runs as the host user, so the files it writes in the repo
 # (build/, install/, log/, __pycache__, tools/data/) are the user's, not root's.
@@ -92,7 +99,7 @@ help:
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
 	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
-	@echo "  make gello [ROBOT=real]  Start GELLO teleoperation (GELLO_PORT=$(GELLO_PORT))"
+	@echo "  make gello [ROBOT=real]  Start GELLO teleoperation (finds the GELLO; GELLO_PORT=... forces a port)"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
 	@echo "  make gello-enable   Enable GELLO control"
 	@echo "  make gello-disable  Disable GELLO control"
@@ -149,7 +156,6 @@ help:
 
 run:
 	@xhost +si:localuser:$(shell id -un) > /dev/null
-	@$(if $(GELLO_DEVICE),echo "GELLO found at $(GELLO_PORT).",echo "Note: no GELLO at $(GELLO_PORT). Plug it in and re-run 'make run' to use it.")
 	docker run \
 	--detach \
 	--rm \
@@ -160,8 +166,8 @@ run:
 	-e QT_X11_NO_MITSHM=1 \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
 	-v $(ROS_WS):/ros2_ws:rw \
-	$(GELLO_DEVICE) \
-	$(GELLO_GROUP) \
+	$(SERIAL_DEVICES) \
+	$(SERIAL_GROUPS) \
 	$(RT_LIMITS) \
 	--name $(CONTAINER_NAME) \
 	$(TAG) \
@@ -200,7 +206,7 @@ test-panda: test-all-joints test-gripper
 	@echo "Full Panda test SUCCEEDED"
 
 gello:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT) $(ROBOT))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT_ARG) $(ROBOT))
 
 gello-fake:
 	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT))
@@ -219,7 +225,7 @@ gello-offsets:
 		exit 1; \
 	fi
 	docker exec -it $(CONTAINER_NAME) bash -c \
-		"$(ROS_SOURCE) && ros2 run gello_teleop gello_get_offset --port $(GELLO_PORT) --joint-signs $(GELLO_SIGNS) $(if $(GELLO_START),--start-joints $(GELLO_START),)"
+		"$(ROS_SOURCE) && port=\$$(ros2 run gello_teleop gello_find_port $(GELLO_PORT_ARG)) && ros2 run gello_teleop gello_get_offset --port \$$port --joint-signs $(GELLO_SIGNS) $(if $(GELLO_START),--start-joints $(GELLO_START),)"
 
 test-gello:
 	docker exec -it $(CONTAINER_NAME) bash \

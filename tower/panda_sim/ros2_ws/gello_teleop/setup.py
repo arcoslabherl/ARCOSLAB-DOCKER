@@ -27,6 +27,7 @@ setup(
             'gello_driver = gello_teleop.gello_driver:main',
             'gello_calibrator = gello_teleop.gello_calibrator:main',
             'gello_get_offset = gello_teleop.gello_get_offset:main',
+            'gello_find_port = gello_teleop.find_port:main',
         ],
     },
 )
