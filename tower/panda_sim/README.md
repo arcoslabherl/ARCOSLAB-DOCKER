@@ -117,7 +117,7 @@ Check the Joint Reacher action:
 
 ## 8. GELLO teleoperation
 
-With the GELLO plugged in before `make run`, in separate
+With the GELLO plugged in (before or after `make run`), in separate
 terminals:
 
     make sim-teleop       # simulator without RBC
