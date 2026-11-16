@@ -156,13 +156,27 @@ To stop the container:
 
     make stop
 
+## 10. Real Panda (not tested on the robot yet)
+
+A second image adds libfranka 0.8.0 (the version for the lab's
+Panda) and real-time limits. The host needs a PREEMPT_RT kernel.
+
+    make .build-real
+    make stop && make run REAL=1
+    make real-driver-build
+    make rt-check
+
+See `ros2_ws/tools/real_robot/README.md`.
+
 ## Project structure
 
-- `Dockerfile`, `ros_entrypoint.sh`: ROS 2 environment
+- `Dockerfile`, `ros_entrypoint.sh`: ROS 2 environment (stage
+  `sim`, and `real` = `sim` + libfranka)
 - `Makefile`: all commands (`make help`)
 - `patches/`: changes to the external repositories, applied by
   `make .pull`, and the proposed real-driver patch
-  `panda_driver_safety.patch` (not applied by `make .pull`)
+  `panda_driver_safety.patch` (not applied by `make .pull`), and
+  `libfranka_0.8.0_gcc11.patch` (applied by `make .build-real`)
 - `ros2_ws/src/`: external ARCoS-Lab repositories, at pinned
   commits (not committed; GitLab access required)
 - `ros2_ws/gello_teleop/`: GELLO ROS 2 package (driver,
@@ -173,6 +187,8 @@ To stop the container:
 - `ros2_ws/tools/`: delay measurement tool and recordings
 - `ros2_ws/tools/fake_franka/`: fake libfranka to test the real
   driver without the robot
+- `ros2_ws/tools/real_robot/`: real driver build and run, and the
+  real-time check
 
 Inside the container: ROS namespace `/sim_asimilar_01`, container
 `panda-sim-tower`, image `arcoslab-panda:sim-humble`.

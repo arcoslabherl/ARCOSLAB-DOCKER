@@ -2,7 +2,15 @@
 # Dell Precision 5860 Tower / ROS 2 Humble
 
 CONTAINER_NAME = panda-sim-tower
-TAG = arcoslab-panda:sim-humble
+SIM_TAG = arcoslab-panda:sim-humble
+REAL_TAG = arcoslab-panda:real-humble
+
+# REAL=1 ('make run REAL=1'): the real robot image (libfranka) and the
+# real-time limits libfranka's control thread needs (SCHED_FIFO 99, locked
+# memory). The host also needs a PREEMPT_RT kernel.
+REAL ?=
+TAG = $(if $(filter 1,$(REAL)),$(REAL_TAG),$(SIM_TAG))
+RT_LIMITS = $(if $(filter 1,$(REAL)),--ulimit rtprio=99 --ulimit memlock=-1,)
 
 ROS_WS = $(CURDIR)/ros2_ws
 ROS_SRC = $(ROS_WS)/src
@@ -64,13 +72,14 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex latency-record latency-replay latency-analyze stop
+.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex real-driver-build rt-check robot-echo robot-comm-test real-driver latency-record latency-replay latency-analyze stop
 
 help:
 	@echo "Available commands:"
 	@echo "  make .pull          Download simulator repositories"
 	@echo "  make .build         Build Docker image"
-	@echo "  make run            Start Docker container"
+	@echo "  make .build-real    Build the real robot image (sim + libfranka 0.8.0)"
+	@echo "  make run [REAL=1]   Start Docker container (REAL=1: real robot image)"
 	@echo "  make fix-owner      Give root-owned files in ros2_ws/ back to the host user"
 	@echo "  make debug          Open container terminal"
 	@echo "  make .colcon_build  Build ROS 2 workspace"
@@ -93,6 +102,11 @@ help:
 	@echo "  make fake-driver-build  Build the real Panda driver on a fake libfranka"
 	@echo "  make test-driver [PATCHED=1]  Test the real driver on the fake libfranka"
 	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
+	@echo "  make real-driver-build  Build the real driver, plain and patched (REAL=1 container)"
+	@echo "  make rt-check       Check libfranka's real-time requirements (REAL=1 container)"
+	@echo "  make robot-echo     Print the real Panda's state 100 times (no motion)"
+	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
+	@echo "  make real-driver [PATCHED=1]  Run the real driver on the real Panda"
 	@echo "  make stop           Stop Docker container"
 
 .pull:
@@ -114,7 +128,15 @@ help:
 
 .build:
 	docker build \
-	--tag=$(TAG) \
+	--target=sim \
+	--tag=$(SIM_TAG) \
+	--network=host \
+	.
+
+.build-real:
+	docker build \
+	--target=real \
+	--tag=$(REAL_TAG) \
 	--network=host \
 	.
 
@@ -133,6 +155,7 @@ run:
 	-v $(ROS_WS):/ros2_ws:rw \
 	$(GELLO_DEVICE) \
 	$(GELLO_GROUP) \
+	$(RT_LIMITS) \
 	--name $(CONTAINER_NAME) \
 	$(TAG) \
 	bash -c "tail -f /dev/null"
@@ -234,6 +257,27 @@ test-driver:
 
 test-reflex:
 	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_reflex.sh $(if $(PATCHED),--patched)
+
+# The real Panda (tools/real_robot/). Needs the real image: 'make run REAL=1'.
+# PATCHED=1 uses the driver with patches/panda_driver_safety.patch.
+REAL_ROBOT = /ros2_ws/tools/real_robot
+ROBOT_IP ?= 172.16.0.2
+
+real-driver-build:
+	docker cp patches/$(DRIVER_PATCH) $(CONTAINER_NAME):/tmp/$(DRIVER_PATCH)
+	docker exec $(CONTAINER_NAME) bash $(REAL_ROBOT)/build.sh /tmp/$(DRIVER_PATCH)
+
+rt-check:
+	docker exec $(CONTAINER_NAME) /ros2_ws/build/_real_robot/rt_check
+
+robot-echo:
+	$(call exec_session,$(REAL_ROBOT)/examples.sh echo $(ROBOT_IP))
+
+robot-comm-test:
+	$(call exec_session,$(REAL_ROBOT)/examples.sh comm $(ROBOT_IP))
+
+real-driver:
+	$(call exec_session,$(REAL_ROBOT)/run_driver.sh $(if $(PATCHED),--patched))
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)
