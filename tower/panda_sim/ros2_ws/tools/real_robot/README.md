@@ -87,6 +87,9 @@ gripper, so the fingers open and close. The arm moves only after the driver's
 
 ## Teleoperation, in order
 
+A whole session, start to end, with the checks before it and what to
+do if something happens: [TELEOP.md](../../../TELEOP.md).
+
     make real-driver           # terminal 1
     make robot-enable          # the driver holds the arm's current pose
     make gello ROBOT=real      # terminal 2; match the pose it asks for
@@ -103,3 +106,6 @@ original driver, a disable freezes the command in one cycle (a reflex) and the
 next enable starts with the stale velocity, so the arm moves by itself. Never
 use `robot-disable` as a stop button: use `make gello-disable`, or the e-stop.
 Both are tested against the fake libfranka (`make test-robot-mode`).
+
+**After any reflex**, with the original driver the arm can move by itself on
+the next `make robot-enable` (up to ~19°): area clear and e-stop in hand.

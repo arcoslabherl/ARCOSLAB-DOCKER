@@ -16,6 +16,17 @@ using ROS 2 Humble and RViz2. It runs in two modes:
 - X11 graphical environment
 - Access to the required ARCoS-Lab GitLab repositories
 
+`make help` lists the everyday commands; `make help-all` lists them
+all.
+
+**Quick setup:** steps 1 to 4 in one command (from `tower/panda_sim`):
+
+    make setup          # make setup REAL=1 also builds the real robot image
+
+After a `git pull`:
+
+    make update
+
 ## 1. Download dependencies
 
 From the ARCOSLAB-DOCKER repository root:
@@ -86,6 +97,7 @@ Expected result:
 
 To run every simulator test unattended, with nothing else running:
 
+    make test                     # test-unit, then test-sim
     make test-sim                 # all tests, about 2.5 min
     make test-sim ONLY=rbc        # only this section's tests
     make test-sim ONLY=teleop     # only the GELLO test (fake device)
@@ -117,6 +129,9 @@ Check the Joint Reacher action:
 
 ## 8. GELLO teleoperation
 
+Step by step, start to end, in the simulator and on the real Panda:
+[TELEOP.md](TELEOP.md).
+
 With the GELLO plugged in (before or after `make run`), in separate
 terminals:
 
@@ -137,7 +152,9 @@ Panda's limits, as the robot would. See its README.
     make fake-driver-build           # once, and after changing the patch
     make test-driver [PATCHED=1]     # enable, disable while moving, re-enable, 1 kHz posref
     make test-reflex [PATCHED=1]     # a reflex during GELLO teleop (fake GELLO)
+    make test-fake-robot [PATCHED=1] # the build and the three tests (with test-robot-mode)
 
+With the original driver, `test-driver` is expected to fail.
 `PATCHED=1` uses the driver with `patches/panda_driver_safety.patch`.
 That patch is **not** applied by `make .pull`: it changes the code
 that drives the real robot, so it needs the lab's approval first.
@@ -157,6 +174,8 @@ To stop the container:
     make stop
 
 ## 10. Real Panda (not tested on the robot yet)
+
+A session on the robot, step by step: [TELEOP.md](TELEOP.md).
 
 A second image adds libfranka 0.8.0 (the version for the lab's
 Panda) and real-time limits. The host needs a PREEMPT_RT kernel.

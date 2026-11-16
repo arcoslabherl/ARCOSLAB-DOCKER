@@ -33,9 +33,13 @@ make fake-driver-build           # fake lib + driver + patched driver
 make test-driver [PATCHED=1]     # the driver alone
 make test-reflex [PATCHED=1]     # a reflex during teleop, with the fake GELLO
 make test-robot-mode [PATCHED=1] # make robot-enable / robot-disable
+make test-fake-robot [PATCHED=1] # the build, then the three tests
 ```
 
-Both start the fake GELLO configured for the real robot
+With the original driver, `test-driver` is expected to fail (results
+below). With `PATCHED=1` all three pass.
+
+`test-reflex` and `test-robot-mode` start the fake GELLO configured for the real robot
 (`robot:=real`, `config/panda_real.yaml`).
 
 - **`test_driver`:** state gaps during the first enable; disabling while J1

@@ -83,9 +83,43 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable latency-record latency-replay latency-analyze stop
+.PHONY: help help-all setup update test test-fake-robot .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable latency-record latency-replay latency-analyze stop
 
+# The everyday commands, by situation. Everything else: 'make help-all'.
 help:
+	@echo "Simulator with the GELLO (one terminal each):"
+	@echo "  make run            Start the container (plug the GELLO in any time)"
+	@echo "  make sim-teleop     Simulator for GELLO control"
+	@echo "  make gello          GELLO teleoperation (make gello-fake: no hardware)"
+	@echo "  make gello-enable   The Panda follows the GELLO (match its pose first)"
+	@echo "  make gello-disable  The Panda stops where it is"
+	@echo "  make stop           Stop the container"
+	@echo ""
+	@echo "Real Panda, at the lab (in this order; tools/real_robot/README.md):"
+	@echo "  make run REAL=1     Container with libfranka (needs a PREEMPT_RT kernel)"
+	@echo "  make real-driver-build  Once per machine: the driver and rt_check"
+	@echo "  make rt-check       Real-time checks, no robot needed"
+	@echo "  make robot-echo     The robot's state, no motion"
+	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
+	@echo "  make real-driver    The lab's driver (own terminal)"
+	@echo "  make robot-enable   The driver holds the arm's pose"
+	@echo "  make gello ROBOT=real, then gello-enable / gello-disable as above"
+	@echo "  make robot-disable  Only with the GELLO disabled and the arm still"
+	@echo ""
+	@echo "Setup and tests:"
+	@echo "  make setup [REAL=1] First time on a machine: download, build, start, compile"
+	@echo "  make update         After 'git pull': update the repositories and compile"
+	@echo "  make test           Unit tests + simulator tests, unattended"
+	@echo ""
+	@echo "Step by step, start to end: TELEOP.md. All commands: make help-all"
+
+help-all:
+	@echo "Shortcuts:"
+	@echo "  make setup [REAL=1] .pull, .build (+ .build-real), run if stopped, .colcon_build"
+	@echo "  make update         .pull and .colcon_build (the container must be running)"
+	@echo "  make test [ONLY=rbc|teleop]  test-unit, then test-sim"
+	@echo "  make test-fake-robot [PATCHED=1]  fake-driver-build + the three tests (original driver: test-driver fails, known)"
+	@echo ""
 	@echo "Available commands:"
 	@echo "  make .pull          Download simulator repositories"
 	@echo "  make .build         Build Docker image"
@@ -122,6 +156,40 @@ help:
 	@echo "  make robot-enable   Enable the driver (it holds the arm's pose)"
 	@echo "  make robot-disable  Disable the driver (refused while GELLO controls or the arm moves)"
 	@echo "  make stop           Stop Docker container"
+
+# No "Entering directory" lines from the shortcuts' sub-makes
+MAKEFLAGS += --no-print-directory
+
+# Shortcuts: the commands that always go together, in order. Each step is
+# still its own target. REAL=1, ONLY and PATCHED reach the sub-makes.
+setup:
+	$(MAKE) .pull
+	$(MAKE) .build $(if $(filter 1,$(REAL)),.build-real)
+	@# A running container keeps its image and options: restart it by hand
+	@if docker container inspect $(CONTAINER_NAME) >/dev/null 2>&1; then \
+		echo "The container is already running: kept as it is."; \
+	else \
+		$(MAKE) run; \
+	fi
+	$(MAKE) .colcon_build
+
+update:
+	$(MAKE) .pull
+	$(MAKE) .colcon_build
+
+test:
+	$(MAKE) test-unit
+	$(MAKE) test-sim
+
+# Runs all three even if one fails: the original driver fails test-driver
+# (known bugs, tools/fake_franka/README.md); PATCHED=1 should pass them all.
+test-fake-robot:
+	$(MAKE) fake-driver-build
+	@failed=; for t in test-driver test-reflex test-robot-mode; do \
+		$(MAKE) $$t || failed="$$failed $$t"; \
+	done; \
+	if [ -n "$$failed" ]; then echo "test-fake-robot: FAILED:$$failed"; exit 1; fi; \
+	echo "test-fake-robot: all passed"
 
 .pull:
 	mkdir -p $(ROS_SRC)
