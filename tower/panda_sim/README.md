@@ -23,12 +23,9 @@ all.
 
     make setup          # make setup REAL=1 also builds the real robot image
 
-After a `git pull`, update the repositories and the workspace with:
+After a `git pull`:
 
     make update
-
-`setup` doesn't restart a container that is already running. If the
-`Makefile`'s `run` options changed, run `make stop && make run`.
 
 ## 1. Download dependencies
 
@@ -157,8 +154,7 @@ Panda's limits, as the robot would. See its README.
     make test-reflex [PATCHED=1]     # a reflex during GELLO teleop (fake GELLO)
     make test-fake-robot [PATCHED=1] # the build and the three tests (with test-robot-mode)
 
-With the original driver `test-driver` fails: that is the bug the
-patch fixes (the fake libfranka README has the numbers).
+With the original driver, `test-driver` is expected to fail.
 `PATCHED=1` uses the driver with `patches/panda_driver_safety.patch`.
 That patch is **not** applied by `make .pull`: it changes the code
 that drives the real robot, so it needs the lab's approval first.

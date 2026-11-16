@@ -25,20 +25,14 @@ container set up as in the [simulator README](../../README.md)
 
 Plug in the GELLO's USB cable and power its servos, before or
 after `make run`. `make gello` and `make gello-offsets` find it
-by themselves: among the USB-serial adapters, the one whose
-first servo answers a Dynamixel ping. If nothing answers, they
-say whether no adapter is connected or the servos don't answer
-(no power).
+by themselves. If they can't, they say whether the cable or the
+servos' power is missing.
 
 To force a port, e.g. with two GELLOs connected:
 
     make gello GELLO_PORT=/dev/serial/by-id/usb-FTDI_...
 
-`make run` shows the host's `/dev` at `/hostdev` (read-only)
-and lets the container open only USB-serial adapters
-(`ttyUSB*`), so unplugging and plugging the GELLO back needs no
-container restart. After an unplug, restart `make gello`: the
-driver does not reconnect by itself.
+If the cable comes out, plug it back and restart `make gello`.
 
 The container gets the port's group (`dialout` on Ubuntu, `uucp`
 on Arch), so it opens the GELLO without root.

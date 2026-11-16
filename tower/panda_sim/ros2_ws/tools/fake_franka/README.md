@@ -36,9 +36,8 @@ make test-robot-mode [PATCHED=1] # make robot-enable / robot-disable
 make test-fake-robot [PATCHED=1] # the build, then the three tests
 ```
 
-`make test-fake-robot` runs all three even if one fails, and lists the
-failed ones. With the original driver `test-driver` fails: those are the
-bugs the patch fixes (results below). With `PATCHED=1` all three pass.
+With the original driver, `test-driver` is expected to fail (results
+below). With `PATCHED=1` all three pass.
 
 `test-reflex` and `test-robot-mode` start the fake GELLO configured for the real robot
 (`robot:=real`, `config/panda_real.yaml`).

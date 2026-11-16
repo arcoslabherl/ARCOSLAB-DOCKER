@@ -107,8 +107,5 @@ next enable starts with the stale velocity, so the arm moves by itself. Never
 use `robot-disable` as a stop button: use `make gello-disable`, or the e-stop.
 Both are tested against the fake libfranka (`make test-robot-mode`).
 
-**After any reflex** (a collision, a limit, not only a disable), the same
-stale velocity is there: with the original driver the arm can move by itself
-on the next `make robot-enable`, up to ~19° in the fake libfranka tests. Area
-clear and e-stop in hand before re-enabling. The patched driver
-(`PATCHED=1`) starts from rest.
+**After any reflex**, with the original driver the arm can move by itself on
+the next `make robot-enable` (up to ~19°): area clear and e-stop in hand.
