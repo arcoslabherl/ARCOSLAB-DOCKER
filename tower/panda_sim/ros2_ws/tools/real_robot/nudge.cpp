@@ -196,6 +196,7 @@ int main(int argc, char** argv) {
     log.reserve(static_cast<size_t>(total * 1000.0) + 2000);  // no allocation in the loop
     std::array<double, 7> base{};
     double time = 0.0;
+    bool started = false;  // not "period == 0": a repeated robot time would move the base
     double max_follow = 0.0;  // largest |q - q_d| (rad)
     double min_rate = 1.0, sum_rate = 0.0;
     uint64_t samples = 0, lost = 0;
@@ -203,8 +204,9 @@ int main(int argc, char** argv) {
 
     robot.control(
         [&](const franka::RobotState& state, franka::Duration period) -> franka::JointPositions {
-          if (period.toMSec() == 0) {
+          if (!started) {
             base = state.q_d;  // start exactly where the robot's command is
+            started = true;
           } else {
             // One step per cycle, as the driver's ruckig: after a lost
             // packet the curve goes on from the last command instead of
