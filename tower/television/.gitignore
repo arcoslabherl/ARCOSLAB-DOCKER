@@ -1,0 +1,22 @@
+# ROS 2 build artifacts
+ros2_ws/build/
+ros2_ws/install/
+ros2_ws/log/
+
+# HTTPS certificates and their CA ('make cert'): private keys, never commit
+certs/
+*.pem
+
+# ZED calibration files, downloaded by the SDK
+zed_settings/
+
+# Python
+__pycache__/
+*.pyc
+
+# Runtime files
+*.log
+
+# Credentials and environment variables
+.env
+.env.*

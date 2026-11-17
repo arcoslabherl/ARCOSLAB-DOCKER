@@ -1,0 +1,13 @@
+# television_stream: ZED (or test pattern) to the headset through Vuer.
+television_stream:
+  ros__parameters:
+    source: zed            # zed, or fake (test pattern, no camera)
+    resolution: HD720      # per eye: HD2K, HD1080, HD720, VGA
+    fps: 60.0              # camera rate (ZED Mini at HD720: 15, 30 or 60)
+    stream_hz: 30.0        # pairs sent to each headset per second, at most
+    jpeg_quality: 80
+    row_step: 2            # send every 2nd row: half the bandwidth (the lab's tested setting)
+    port: 8012
+    cert: /television/certs/cert.pem   # 'make cert'; missing: plain HTTP (localhost only)
+    key: /television/certs/key.pem
+    frame_id: television_world

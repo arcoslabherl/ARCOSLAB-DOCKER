@@ -1,0 +1,17 @@
+# Git
+.git/
+
+# Only the Dockerfile and ros_entrypoint.sh are needed in the build context
+ros2_ws/
+certs/
+zed_settings/
+*.pem
+
+# Temporary files
+__pycache__/
+*.pyc
+*.log
+
+# Credentials
+.env
+.env.*
