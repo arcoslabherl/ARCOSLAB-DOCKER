@@ -199,6 +199,7 @@ test-fake-robot:
 	$(call pull_repo,robot-descriptions,$(GITLAB)/robot-hardware-firmware/collaborative-robot/arcos-lab-asimilar-platform-robot-descriptions.git,5a5fecd2f6be4b77cbd23efd9cf1e9193f785395)
 	$(call pull_repo,robot-startup,$(GITLAB)/robot-hardware-firmware/collaborative-robot/arcos-lab-collaborative-robot-startup.git,93c9fe6b578cc4e631a3a8501fd7207abefc6540)
 	$(call pull_repo,panda-driver-topics,$(GITLAB)/robot-hardware-firmware/drivers/ros2-panda-driver-topics.git,ee14a1e6f9666bd2b9a391fa30da79fd00ee5e42)
+	$(call pull_repo,mobile-platform,$(GITLAB)/robot-hardware-firmware/arcos-lab-mobile-platform.git,90fdcf24c4df884e1554db456c3ac1ca00f91df8)
 	@echo "Applying patches..."
 	$(call apply_patch,robot-descriptions,platform_mesh_package)
 	$(call apply_patch,robot-startup,rviz_config)
