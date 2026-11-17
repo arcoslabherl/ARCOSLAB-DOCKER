@@ -53,7 +53,8 @@ folder; `make help` lists them.
 
 1. Plug the ZED in (USB 3), then `make run`.
 2. `make stream`. On the headset, open in Safari
-   `https://<machine>:8012?ws=wss://<machine>:8012`, then "Enter VR".
+   `https://<machine>:8012` (e.g. `https://tower.tail219772.ts.net:8012`),
+   then "Enter VR". Bookmark it.
    `<machine>`: its Tailscale name (`make cert-tailscale` prints the
    address), or its IP with `make cert`.
 3. `make stop` at the end.
@@ -64,7 +65,7 @@ With Tailscale, `tailscale ping <headset>` should say `via <ip>:<port>`:
 Without the ZED or the headset: `make stream-fake` (test pattern: `L` in the
 left eye, `R` in the right one, the orange bar in front of the grid). Then
 `make test-stream` checks it like a headset would, or open
-`https://localhost:8012?ws=wss://localhost:8012` in a browser on this machine.
+`https://localhost:8012` in a browser on this machine.
 `make head-echo` prints the head pose while a headset is connected.
 
 Settings (resolution, rates, JPEG quality):

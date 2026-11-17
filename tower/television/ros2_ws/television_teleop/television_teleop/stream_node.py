@@ -119,12 +119,10 @@ class StreamNode(Node):
         app.add_handler('CAMERA_MOVE')(self.on_camera_move)
         app.spawn(start=False)(self.vuer_session)
 
-        scheme = 'https' if https else 'http'
-        ws = 'wss' if https else 'ws'
-        self.get_logger().info(
-            f'Open in the headset: {scheme}://<this machine>:{self.port}'
-            f'?ws={ws}://<this machine>:{self.port}'
-            + ('' if https else f'  (here: http://localhost:{self.port}?ws=ws://localhost:{self.port})'))
+        if https:
+            self.get_logger().info(f'Open in the headset: https://<this machine>:{self.port}')
+        else:
+            self.get_logger().info(f'Open here: http://localhost:{self.port}')
         app.run()
 
     async def on_camera_move(self, event, session):

@@ -146,7 +146,7 @@ cert-tailscale:
 	@mkdir -p $(CERTS)
 	sudo tailscale cert --cert-file $(CERTS)/cert.pem --key-file $(CERTS)/key.pem $(TAILSCALE_NAME)
 	sudo chown $(shell id -u):$(shell id -g) $(CERTS)/cert.pem $(CERTS)/key.pem
-	@echo "On the headset (Tailscale on): https://$(TAILSCALE_NAME):8012?ws=wss://$(TAILSCALE_NAME):8012"
+	@echo "On the headset (Tailscale on): https://$(TAILSCALE_NAME):8012"
 
 # The ZED SDK's udev rules: users (and the container) may open the
 # ZED's sensors. From the image, so they match its SDK.
