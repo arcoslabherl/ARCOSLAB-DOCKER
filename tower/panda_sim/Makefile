@@ -83,7 +83,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help help-all setup update test test-fake-robot .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable latency-record latency-replay latency-analyze stop
+.PHONY: help help-all setup update test test-fake-robot .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode test-nudge real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable robot-nudge latency-record latency-replay latency-analyze stop
 
 # The everyday commands, by situation. Everything else: 'make help-all'.
 help:
@@ -97,12 +97,13 @@ help:
 	@echo ""
 	@echo "Real Panda, at the lab (in this order; tools/real_robot/README.md):"
 	@echo "  make run REAL=1     Container with libfranka (needs a PREEMPT_RT kernel)"
-	@echo "  make real-driver-build  Once per machine: the driver and rt_check"
+	@echo "  make real-driver-build  Once per machine: the driver, rt_check, nudge"
 	@echo "  make rt-check       Real-time checks, no robot needed"
 	@echo "  make robot-echo     The robot's state, no motion"
-	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
+	@echo "  make robot-nudge JOINT=7 DEG=5  One joint a few degrees and back (driver stopped)"
 	@echo "  make real-driver    The lab's driver (own terminal)"
 	@echo "  make robot-enable   The driver holds the arm's pose"
+	@echo "  make robot-nudge VIA=driver JOINT=7 DEG=5  The same, through the driver"
 	@echo "  make gello ROBOT=real, then gello-enable / gello-disable as above"
 	@echo "  make robot-disable  Only with the GELLO disabled and the arm still"
 	@echo ""
@@ -118,7 +119,7 @@ help-all:
 	@echo "  make setup [REAL=1] .pull, .build (+ .build-real), run if stopped, .colcon_build"
 	@echo "  make update         .pull and .colcon_build (the container must be running)"
 	@echo "  make test [ONLY=rbc|teleop]  test-unit, then test-sim"
-	@echo "  make test-fake-robot [PATCHED=1]  fake-driver-build + the three tests (original driver: test-driver fails, known)"
+	@echo "  make test-fake-robot [PATCHED=1]  fake-driver-build + the four tests (original driver: test-driver fails, known)"
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make .pull          Download simulator repositories"
@@ -148,10 +149,12 @@ help-all:
 	@echo "  make test-driver [PATCHED=1]  Test the real driver on the fake libfranka"
 	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
 	@echo "  make test-robot-mode [PATCHED=1]  Test robot-enable/robot-disable (fake robot)"
-	@echo "  make real-driver-build  Build the real driver, plain and patched (REAL=1 container)"
+	@echo "  make test-nudge [PATCHED=1]  Test robot-nudge, both ways (fake robot)"
+	@echo "  make real-driver-build  Build the real driver (plain and patched), rt_check and nudge (REAL=1 container)"
 	@echo "  make rt-check       Check libfranka's real-time requirements (REAL=1 container)"
 	@echo "  make robot-echo     Print the real Panda's state 100 times (no motion)"
 	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
+	@echo "  make robot-nudge JOINT=1-7 DEG=+-10 [VIA=driver]  One joint a few degrees and back"
 	@echo "  make real-driver [PATCHED=1]  Run the real driver on the real Panda"
 	@echo "  make robot-enable   Enable the driver (it holds the arm's pose)"
 	@echo "  make robot-disable  Disable the driver (refused while GELLO controls or the arm moves)"
@@ -181,11 +184,11 @@ test:
 	$(MAKE) test-unit
 	$(MAKE) test-sim
 
-# Runs all three even if one fails: the original driver fails test-driver
+# Runs them all even if one fails: the original driver fails test-driver
 # (known bugs, tools/fake_franka/README.md); PATCHED=1 should pass them all.
 test-fake-robot:
 	$(MAKE) fake-driver-build
-	@failed=; for t in test-driver test-reflex test-robot-mode; do \
+	@failed=; for t in test-driver test-reflex test-robot-mode test-nudge; do \
 		$(MAKE) $$t || failed="$$failed $$t"; \
 	done; \
 	if [ -n "$$failed" ]; then echo "test-fake-robot: FAILED:$$failed"; exit 1; fi; \
@@ -343,6 +346,9 @@ test-reflex:
 test-robot-mode:
 	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_robot_mode.sh $(if $(PATCHED),--patched)
 
+test-nudge:
+	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_nudge.sh $(if $(PATCHED),--patched)
+
 # The real Panda (tools/real_robot/). Needs the real image: 'make run REAL=1'.
 # PATCHED=1 uses the driver with patches/panda_driver_safety.patch.
 REAL_ROBOT = /ros2_ws/tools/real_robot
@@ -370,6 +376,12 @@ robot-enable:
 
 robot-disable:
 	$(call exec_session,$(REAL_ROBOT)/robot_mode.sh disable --ns $(ROBOT_NS))
+
+# One joint a few degrees from where it is, and back. VIA=driver: through the
+# running, enabled driver (posref); otherwise libfranka alone (driver stopped).
+robot-nudge:
+	@test -n "$(JOINT)" -a -n "$(DEG)" || { echo 'Usage: make robot-nudge JOINT=1-7 DEG=-10..10 [VIA=driver]'; exit 1; }
+	$(call exec_session,$(REAL_ROBOT)/nudge.sh $(if $(filter driver,$(VIA)),driver $(JOINT) $(DEG) --ns $(ROBOT_NS),libfranka $(ROBOT_IP) $(JOINT) $(DEG)))
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)

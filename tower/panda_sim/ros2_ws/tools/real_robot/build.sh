@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the real driver (panda_driver_topics) against the image's libfranka,
-# and rt_check, in /ros2_ws/build/_real_robot. Doesn't touch the colcon
+# rt_check and nudge, in /ros2_ws/build/_real_robot. Doesn't touch the colcon
 # workspace or the driver's COLCON_IGNORE. Run inside the real image's
 # container ('make .build-real', 'make run REAL=1').
 #   build.sh [<driver patch>]   also builds driver_patched/ with the patch
@@ -22,6 +22,8 @@ DRIVER_SRC=/ros2_ws/src/panda-driver-topics/ros2_panda_driver_topics
 mkdir -p "$OUT"
 g++ -O2 -std=c++17 "$HERE/rt_check.cpp" -lfranka -o "$OUT/rt_check"
 echo "Built: $OUT/rt_check"
+g++ -O2 -std=c++17 "$HERE/nudge.cpp" -lfranka -o "$OUT/nudge"
+echo "Built: $OUT/nudge"
 
 cmake -S "$DRIVER_SRC" -B "$OUT/driver" -DCMAKE_BUILD_TYPE=Release
 cmake --build "$OUT/driver" -j"$(nproc)"

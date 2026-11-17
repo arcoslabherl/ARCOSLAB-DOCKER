@@ -33,6 +33,7 @@ struct RobotState {
   std::array<double, 7> ddq_d{};
   std::array<double, 7> tau_J{};
   std::array<double, 7> tau_ext_hat_filtered{};
+  double control_command_success_rate{1.0};  // the fake never loses packets
   Duration time{};
 };
 

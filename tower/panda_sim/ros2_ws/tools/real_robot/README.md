@@ -63,14 +63,24 @@ Follow the checklist in the project notes. In order:
     make run REAL=1
     make rt-check
     make robot-echo        # reads the state 100 times, no motion
-    make robot-comm-test   # MOVES the arm (see below)
+    make robot-nudge JOINT=7 DEG=5   # one joint 5 degrees and back (see below)
 
 `make robot-echo` shows what libfranka knows about the robot, including the
 end-effector load configured in Desk (`m_ee`, `F_x_Cee`, `F_T_EE`) and the
 estimated external force `O_F_ext_hat_K`, which should be near 0 with the arm
 still.
 
-`make robot-comm-test` asks for confirmation first. libfranka 0.8.0's
+`make robot-nudge JOINT=<1-7> DEG=<-10..10>` moves one joint from where it
+is and back, with libfranka alone (the driver must be stopped): 3 s out, 1 s
+still, 3 s back, at most 10 degrees, never past the joint limits minus 0.1
+rad. It uses the driver's robot settings (collision thresholds, joint
+impedance, rate limiter). It shows the pose and asks for `yes` first. At the
+end it prints how close the arm came back, the largest gap between the
+measured and commanded position, and the communication quality
+(`control_command_success_rate`, lost packets), which tells whether this
+computer is good enough. Start with the wrist (J7), a few degrees.
+
+`make robot-comm-test` (optional, a bigger move) asks for confirmation first. libfranka 0.8.0's
 example **moves the arm** to the joint pose (0, -45, 0, -135, 0, 90, 45)
 degrees at half speed. Then it runs about 10 s with zero torque: the arm
 floats, compensated for gravity only, so it sags if the load in Desk is
@@ -84,6 +94,11 @@ Then the driver, named as in the lab's real launch (`/asimilar/panda_arm`):
 It asks for confirmation first: at startup the driver connects and homes the
 gripper, so the fingers open and close. The arm moves only after the driver's
 `control` service enables it.
+
+Before the GELLO, the same small test through the driver (as the GELLO
+will command it), after `make robot-enable` and with the GELLO disabled:
+
+    make robot-nudge VIA=driver JOINT=7 DEG=5
 
 ## Teleoperation, in order
 
