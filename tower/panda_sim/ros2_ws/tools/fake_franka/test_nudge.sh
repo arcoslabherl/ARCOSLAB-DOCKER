@@ -16,6 +16,7 @@ NUDGE=/ros2_ws/build/_fake_franka/nudge
 DRIVER_NUDGE="bash $TOOLS/real_robot/nudge.sh driver"
 OUT=/tmp/fake_franka_test
 mkdir -p "$OUT"
+export NUDGE_LOG_DIR="$OUT/nudge_logs"   # keep tools/data for the real robot
 [ -x "$NUDGE" ] || { echo "Build it first: make fake-driver-build"; exit 1; }
 
 FAILED=0

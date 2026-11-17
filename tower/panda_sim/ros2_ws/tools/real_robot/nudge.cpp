@@ -6,12 +6,14 @@
 // Same robot settings as the lab driver (collision thresholds, joint
 // impedance, joint position control with libfranka's rate limiter), so it
 // shows how the arm behaves under the driver. Out in 3 s, 1 s still, back in
-// 3 s (counted in 1 ms control cycles), each half a minimum-jerk curve (zero
-// velocity and acceleration at both ends). At most 10 degrees, and only inside
-// the joint limits minus 0.1 rad.
+// 3 s, 0.5 s still before finishing (counted in 1 ms control cycles). Each way
+// is a minimum-jerk curve (zero velocity and acceleration at both ends). At
+// most 10 degrees, and only inside the joint limits minus 0.1 rad.
 //
 // At the end it prints the communication quality, as libfranka's
 // communication_test does: control_command_success_rate and lost packets.
+// Every cycle of the moving joint goes to a CSV, also when libfranka fails
+// ($NUDGE_LOG_DIR, default /ros2_ws/tools/data).
 #include <franka/exception.h>
 #include <franka/robot.h>
 
@@ -19,8 +21,12 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <ctime>
+#include <filesystem>
 #include <iostream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -28,6 +34,7 @@ constexpr double kMaxDegrees = 10.0;
 constexpr double kMargin = 0.1;      // rad, as the calibrator's joint_limit_margin
 constexpr double kMoveTime = 3.0;    // s, each way
 constexpr double kHoldTime = 1.0;    // s, at the target
+constexpr double kSettleTime = 0.5;  // s, still at the start before finishing
 constexpr double kStill = 0.01;      // rad/s, largest joint speed to start
 
 // Franka Panda joint position limits (rad), as in the URDF and the calibrator
@@ -62,6 +69,38 @@ std::string pose_deg(const std::array<double, 7>& q) {
     text += buffer;
   }
   return text;
+}
+
+// One control cycle of the moving joint, for the CSV
+struct Sample {
+  double t, cmd, q_d, dq_d, ddq_d, q, dq, rate;
+  uint64_t period_ms;
+};
+
+void write_log(const std::vector<Sample>& log, int joint, double degrees) {
+  const char* env = std::getenv("NUDGE_LOG_DIR");
+  const std::string dir = env != nullptr ? env : "/ros2_ws/tools/data";
+  char name[64];
+  std::time_t now = std::time(nullptr);
+  std::strftime(name, sizeof(name), "%Y%m%d_%H%M%S", std::localtime(&now));
+  const std::string path =
+      dir + "/nudge_J" + std::to_string(joint) + "_" + std::to_string(static_cast<int>(degrees)) +
+      "deg_" + name + ".csv";
+  std::error_code error;
+  std::filesystem::create_directories(dir, error);
+  FILE* file = std::fopen(path.c_str(), "w");
+  if (file == nullptr) {
+    std::printf("(could not write the log to %s)\n", path.c_str());
+    return;
+  }
+  std::fprintf(file, "t,period_ms,cmd,q_d,dq_d,ddq_d,q,dq,success_rate\n");
+  for (const Sample& x : log) {
+    std::fprintf(file, "%.3f,%llu,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.4f\n", x.t,
+                 static_cast<unsigned long long>(x.period_ms), x.cmd, x.q_d, x.dq_d, x.ddq_d, x.q,
+                 x.dq, x.rate);
+  }
+  std::fclose(file);
+  std::printf("Log (every cycle of J%d): %s\n", joint, path.c_str());
 }
 
 int usage() {
@@ -99,6 +138,7 @@ int main(int argc, char** argv) {
   const int j = joint - 1;
   const double delta = degrees * M_PI / 180.0;
 
+  std::vector<Sample> log;  // filled in the control loop, written also on errors
   try {
     franka::Robot robot(ip);
     const franka::RobotState start = robot.readOnce();
@@ -136,7 +176,8 @@ int main(int argc, char** argv) {
     robot.automaticErrorRecovery();
     driver_behavior(robot);
 
-    const double total = 2.0 * kMoveTime + kHoldTime;
+    const double total = 2.0 * kMoveTime + kHoldTime + kSettleTime;
+    log.reserve(static_cast<size_t>(total * 1000.0) + 2000);  // no allocation in the loop
     std::array<double, 7> base{};
     double time = 0.0;
     double max_follow = 0.0;  // largest |q - q_d| (rad)
@@ -172,15 +213,22 @@ int main(int argc, char** argv) {
           } else if (time < kMoveTime + kHoldTime) {
             s = 1.0;
           } else {
+            // back, then still at the start for kSettleTime (min_jerk clamps to 1)
             s = 1.0 - min_jerk((time - kMoveTime - kHoldTime) / kMoveTime);
           }
           std::array<double, 7> command = base;
           command[j] += delta * s;
+          if (log.size() < log.capacity()) {
+            log.push_back({time, command[j], state.q_d[j], state.dq_d[j], state.ddq_d[j],
+                           state.q[j], state.dq[j], state.control_command_success_rate,
+                           period.toMSec()});
+          }
           if (time >= total) return franka::MotionFinished(franka::JointPositions(base));
           return command;
         },
         franka::ControllerMode::kJointImpedance, true, 1000.0);
 
+    write_log(log, joint, degrees);
     double back = 0.0;
     for (int i = 0; i < 7; i++) back = std::max(back, std::abs(last_q[i] - base[i]));
     std::printf("Done. Back at the start within %.2f deg (largest joint).\n", deg(back));
@@ -192,6 +240,11 @@ int main(int argc, char** argv) {
     }
     return 0;
   } catch (const franka::Exception& ex) {
+    if (!log.empty()) {
+      std::printf("Stopped %.3f s into the motion (of %.1f s).\n", log.back().t,
+                  2.0 * kMoveTime + kHoldTime + kSettleTime);
+      write_log(log, joint, degrees);
+    }
     std::cout << "libfranka error: " << ex.what() << "\n"
               << "The robot stopped (reflex or no connection). Check the arm and the "
                  "area. The next run clears the error first, as the driver does.\n";
