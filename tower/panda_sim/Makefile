@@ -154,7 +154,7 @@ help-all:
 	@echo "  make rt-check       Check libfranka's real-time requirements (REAL=1 container)"
 	@echo "  make robot-echo     Print the real Panda's state 100 times (no motion)"
 	@echo "  make robot-comm-test  libfranka's communication test (MOVES the arm)"
-	@echo "  make robot-nudge JOINT=1-7 DEG=+-10 [VIA=driver]  One joint a few degrees and back"
+	@echo "  make robot-nudge JOINT=1-7 DEG=+-10 [VIA=driver | STIFF=1]  One joint a few degrees and back"
 	@echo "  make real-driver [PATCHED=1]  Run the real driver on the real Panda"
 	@echo "  make robot-enable   Enable the driver (it holds the arm's pose)"
 	@echo "  make robot-disable  Disable the driver (refused while GELLO controls or the arm moves)"
@@ -379,9 +379,10 @@ robot-disable:
 
 # One joint a few degrees from where it is, and back. VIA=driver: through the
 # running, enabled driver (posref); otherwise libfranka alone (driver stopped).
+# STIFF=1 (libfranka alone): libfranka examples' joint impedance, not the driver's.
 robot-nudge:
 	@test -n "$(JOINT)" -a -n "$(DEG)" || { echo 'Usage: make robot-nudge JOINT=1-7 DEG=-10..10 [VIA=driver]'; exit 1; }
-	$(call exec_session,$(REAL_ROBOT)/nudge.sh $(if $(filter driver,$(VIA)),driver $(JOINT) $(DEG) --ns $(ROBOT_NS),libfranka $(ROBOT_IP) $(JOINT) $(DEG)))
+	$(call exec_session,$(REAL_ROBOT)/nudge.sh $(if $(filter driver,$(VIA)),driver $(JOINT) $(DEG) --ns $(ROBOT_NS),libfranka $(ROBOT_IP) $(JOINT) $(DEG) $(if $(STIFF),--stiff)))
 
 stop:
 	-docker stop -t 1 $(CONTAINER_NAME)

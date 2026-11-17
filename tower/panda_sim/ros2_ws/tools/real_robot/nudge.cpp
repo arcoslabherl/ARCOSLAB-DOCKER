@@ -1,11 +1,12 @@
 // Moves one joint of the Panda a few degrees from where it is, and back, with
 // libfranka alone (no driver, no ROS). The first, smallest motion test.
 //
-//   nudge <robot ip> <joint 1-7> <degrees> [--yes]
+//   nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--yes]
 //
 // Same robot settings as the lab driver (collision thresholds, joint
 // impedance, joint position control with libfranka's rate limiter), so it
-// shows how the arm behaves under the driver. Out in 3 s, 1 s still, back in
+// shows how the arm behaves under the driver. --stiff: the joint impedance of
+// libfranka's examples instead (3000..2000, the driver's is 500..200). Out in 3 s, 1 s still, back in
 // 3 s, 0.5 s still before finishing (counted in 1 ms control cycles). Each way
 // is a minimum-jerk curve (zero velocity and acceleration at both ends). At
 // most 10 degrees, and only inside the joint limits minus 0.1 rad.
@@ -51,8 +52,12 @@ double min_jerk(double s) {
 
 // The lab driver's setDefaultBehavior() (ros2_panda_driver_topics.cpp): its
 // second setCollisionBehavior() replaces the first one.
-void driver_behavior(franka::Robot& robot) {
-  robot.setJointImpedance({{500, 500, 500, 500, 500, 200, 200}});
+void driver_behavior(franka::Robot& robot, bool stiff) {
+  if (stiff) {
+    robot.setJointImpedance({{3000, 3000, 3000, 2500, 2500, 2000, 2000}});  // libfranka examples
+  } else {
+    robot.setJointImpedance({{500, 500, 500, 500, 500, 200, 200}});
+  }
   robot.setCartesianImpedance({{500, 500, 500, 50, 50, 50}});
   robot.setCollisionBehavior(
       {{20.0, 20.0, 18.0, 18.0, 16.0, 14.0, 12.0}}, {{40.0, 40.0, 40.0, 40.0, 40.0, 30.0, 20.0}},
@@ -77,15 +82,15 @@ struct Sample {
   uint64_t period_ms;
 };
 
-void write_log(const std::vector<Sample>& log, int joint, double degrees) {
+void write_log(const std::vector<Sample>& log, int joint, double degrees, bool stiff) {
   const char* env = std::getenv("NUDGE_LOG_DIR");
   const std::string dir = env != nullptr ? env : "/ros2_ws/tools/data";
   char name[64];
   std::time_t now = std::time(nullptr);
   std::strftime(name, sizeof(name), "%Y%m%d_%H%M%S", std::localtime(&now));
-  const std::string path =
-      dir + "/nudge_J" + std::to_string(joint) + "_" + std::to_string(static_cast<int>(degrees)) +
-      "deg_" + name + ".csv";
+  const std::string path = dir + "/nudge_J" + std::to_string(joint) + "_" +
+                           std::to_string(static_cast<int>(degrees)) + "deg" +
+                           (stiff ? "_stiff_" : "_") + name + ".csv";
   std::error_code error;
   std::filesystem::create_directories(dir, error);
   FILE* file = std::fopen(path.c_str(), "w");
@@ -104,16 +109,16 @@ void write_log(const std::vector<Sample>& log, int joint, double degrees) {
 }
 
 int usage() {
-  std::cerr << "Usage: nudge <robot ip> <joint 1-7> <degrees> [--yes]\n"
+  std::cerr << "Usage: nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--yes]\n"
             << "  Moves the joint by <degrees> (at most " << kMaxDegrees
-            << ") and back.\n";
+            << ") and back. --stiff: libfranka examples' joint impedance.\n";
   return 2;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 4 || argc > 5) return usage();
+  if (argc < 4 || argc > 6) return usage();
   const std::string ip = argv[1];
   int joint = 0;
   double degrees = 0.0;
@@ -123,8 +128,17 @@ int main(int argc, char** argv) {
   } catch (const std::exception&) {
     return usage();
   }
-  const bool assume_yes = argc == 5 && std::string(argv[4]) == "--yes";
-  if (argc == 5 && !assume_yes) return usage();
+  bool assume_yes = false, stiff = false;
+  for (int i = 4; i < argc; i++) {
+    const std::string flag = argv[i];
+    if (flag == "--yes") {
+      assume_yes = true;
+    } else if (flag == "--stiff") {
+      stiff = true;
+    } else {
+      return usage();
+    }
+  }
 
   if (joint < 1 || joint > 7) {
     std::cout << "NOT DONE: the joint must be 1 to 7.\n";
@@ -161,8 +175,10 @@ int main(int argc, char** argv) {
     std::printf("Pose now (deg):  %s\n", pose_deg(start.q).c_str());
     std::printf("J%d: %.1f -> %.1f deg and back (%.0f s each way, %.0f s at the target).\n",
                 joint, deg(start.q[j]), deg(target), kMoveTime, kHoldTime);
-    std::printf("Peak speed %.3f rad/s. Nothing else moves. E-stop in hand.\n",
-                1.875 * std::abs(delta) / kMoveTime);
+    std::printf("Peak speed %.3f rad/s. Joint impedance: %s. Nothing else moves. "
+                "E-stop in hand.\n",
+                1.875 * std::abs(delta) / kMoveTime,
+                stiff ? "libfranka examples' (stiff)" : "the driver's");
     if (!assume_yes) {
       std::cout << "Type 'yes' to start: " << std::flush;
       std::string answer;
@@ -174,7 +190,7 @@ int main(int argc, char** argv) {
 
     // As the driver does before each control loop
     robot.automaticErrorRecovery();
-    driver_behavior(robot);
+    driver_behavior(robot, stiff);
 
     const double total = 2.0 * kMoveTime + kHoldTime + kSettleTime;
     log.reserve(static_cast<size_t>(total * 1000.0) + 2000);  // no allocation in the loop
@@ -228,7 +244,7 @@ int main(int argc, char** argv) {
         },
         franka::ControllerMode::kJointImpedance, true, 1000.0);
 
-    write_log(log, joint, degrees);
+    write_log(log, joint, degrees, stiff);
     double back = 0.0;
     for (int i = 0; i < 7; i++) back = std::max(back, std::abs(last_q[i] - base[i]));
     std::printf("Done. Back at the start within %.2f deg (largest joint).\n", deg(back));
@@ -243,7 +259,7 @@ int main(int argc, char** argv) {
     if (!log.empty()) {
       std::printf("Stopped %.3f s into the motion (of %.1f s).\n", log.back().t,
                   2.0 * kMoveTime + kHoldTime + kSettleTime);
-      write_log(log, joint, degrees);
+      write_log(log, joint, degrees, stiff);
     }
     std::cout << "libfranka error: " << ex.what() << "\n"
               << "The robot stopped (reflex or no connection). Check the arm and the "

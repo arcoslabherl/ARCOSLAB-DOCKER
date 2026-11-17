@@ -38,6 +38,9 @@ check "past the joint limit refused" \
     "NOT DONE: J4 would end"
 check "cancelled when not confirmed" "$(echo no | $NUDGE fake 7 5 2> /dev/null)" \
     "NOT DONE: cancelled"
+output=$($NUDGE fake 7 3 --stiff --yes 2>&1)
+check "J7 3 deg and back, --stiff" "$output" "Back at the start within 0.00 deg"
+check "  libfranka examples' impedance" "$output" "setJointImpedance 3000 3000 3000 2500 2500 2000 2000"
 for move in "7 5" "1 -10" "4 10"; do
     output=$($NUDGE fake $move --yes 2>&1)
     check "J${move% *} ${move#* } deg and back" "$output" "Back at the start within 0.00 deg"

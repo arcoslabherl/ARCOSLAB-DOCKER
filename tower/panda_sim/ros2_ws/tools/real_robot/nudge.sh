@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Moves one joint a few degrees and back: see nudge.cpp (libfranka alone) and
 # driver_nudge.py (through the driver).
-#   nudge.sh libfranka <robot ip> <joint> <degrees>   the driver must not run
+#   nudge.sh libfranka <robot ip> <joint> <degrees> [--stiff]   the driver must not run
 #   nudge.sh driver <joint> <degrees> [--ns /asimilar/panda_arm]
 # Run inside the real image's container.
 set -e
@@ -23,7 +23,8 @@ case "$1" in
             echo "address (172.16.0.1/24) and that Desk opens."
             exit 1
         fi
-        exec "$BIN" "$IP" "$3" "$4"
+        shift 2
+        exec "$BIN" "$IP" "$@"   # <joint> <degrees> [--stiff]
         ;;
     driver)
         shift
