@@ -8,10 +8,19 @@ Needs the driver running and enabled ('make real-driver', 'make
 robot-enable'), and the GELLO disabled: both publish posref. The driver's
 ruckig (0.8 rad/s, 1.0 rad/s^2, 50 rad/s^3) shapes the motion. At most 10
 degrees, and only inside the joint limits minus 0.1 rad.
+
+Every driver state message (300 Hz) goes to a CSV, also when it stops early
+($NUDGE_LOG_DIR, default /ros2_ws/tools/data). At the end it prints a
+verdict: "clean", or "OSCILLATION" when the commanded position changed
+direction 2 or more times in one way (stop and look at the CSV). One turn at
+the end of a way is an overshoot of the goal, reported in degrees: the
+driver's ruckig does it when a packet is lost while it brakes (~0.1 deg in the
+fake libfranka).
 """
 
 import argparse
 import math
+import os
 import sys
 import time
 
@@ -28,6 +37,11 @@ MOVE_TIMEOUT = 10.0   # s, each way
 HOLD = 1.0            # s, at the target
 RATE = 20.0           # Hz, posref
 GELLO_WATCH = 1.0     # s, listening for /gello/enabled after the driver shows up
+SETTLE = 1.0          # s, logged after the move
+TURN_SIZE = 0.001     # rad (0.06 deg): the command must go back this much to
+                      # count as a turn. The 2026-11-17 oscillation swung +-0.01 rad.
+OSCILLATION_TURNS = 2 # turns in one way that mean an oscillation (1 = overshoot)
+OVERSHOOT_WARN = 0.5  # deg past the goal worth a warning
 
 # Franka Panda joint position limits (rad), as in the URDF and the calibrator
 LOW = [-2.8973, -1.7628, -2.8973, -3.0718, -2.8973, -0.0175, -2.8973]
@@ -44,12 +58,23 @@ class DriverNudge(Node):
         self.state = None
         self.status = None
         self.gello_enabled = False
+        self.joint = 0
+        self.phase = None     # logging while set: "still", "out", "back", "settle"
+        self.goal = None
+        self.log = []         # (t, phase, goal, q_d, q, effort) of the joint
+        self.t0 = time.monotonic()
         self.create_subscription(State, f"{ns}/state", self.on_state, 10)
         self.create_subscription(Status, f"{ns}/status", self.on_status, 10)
         self.create_subscription(Bool, "/gello/enabled", self.on_gello, 10)
 
     def on_state(self, msg):
         self.state = msg
+        if self.phase is not None and len(msg.position) > self.joint:
+            j = self.joint
+            effort = msg.effort[j] if len(msg.effort) > j else float("nan")
+            self.log.append((time.monotonic() - self.t0, self.phase,
+                             self.goal[j] if self.goal else float("nan"),
+                             msg.cmdedposition[j], msg.position[j], effort))
 
     def on_status(self, msg):
         self.status = msg
@@ -83,6 +108,7 @@ class DriverNudge(Node):
         """Publishes goal until the arm gets there and is still. Returns the
         largest move of the other joints, or a string with the problem."""
         start = self.measured()
+        self.goal = list(goal)
         others = 0.0
         reached_at = None
         end = time.monotonic() + seconds
@@ -103,6 +129,72 @@ class DriverNudge(Node):
             else:
                 reached_at = None
         return f"J{j + 1} didn't reach {math.degrees(goal[j]):.1f} deg in {seconds:.0f} s."
+
+
+def write_log(node, joint, degrees):
+    directory = os.environ.get("NUDGE_LOG_DIR", "/ros2_ws/tools/data")
+    stamp = time.strftime("%Y%m%d_%H%M%S")
+    path = f"{directory}/nudge_driver_J{joint}_{int(degrees)}deg_{stamp}.csv"
+    try:
+        os.makedirs(directory, exist_ok=True)
+        with open(path, "w") as f:
+            f.write("t,phase,goal,q_d,q,effort\n")
+            for t, phase, goal, q_d, q, effort in node.log:
+                f.write(f"{t:.4f},{phase},{goal:.9f},{q_d:.9f},{q:.9f},{effort:.4f}\n")
+        print(f"Log ({len(node.log)} driver states of J{joint}): {path}")
+    except OSError as error:
+        print(f"(could not write the log to {path}: {error})")
+
+
+def turns(values, size=TURN_SIZE):
+    """Times the values changed direction by more than size (hysteresis:
+    a turn counts once they go back size from the last extreme)."""
+    if not values:
+        return 0
+    count, direction, extreme = 0, 0, values[0]
+    for value in values[1:]:
+        if direction == 0:
+            if abs(value - extreme) > size:
+                direction = 1 if value > extreme else -1
+                extreme = value
+        elif (value - extreme) * direction > 0:
+            extreme = value
+        elif abs(value - extreme) > size:
+            count += 1
+            direction = -direction
+            extreme = value
+    return count
+
+
+def phase_values(log, phase):
+    return [q_d for _, p, _, q_d, _, _ in log if p == phase]
+
+
+def overshoot(log, phase):
+    """Largest distance the command went past the phase's goal (rad)."""
+    rows = [(goal, q_d) for _, p, goal, q_d, _, _ in log if p == phase]
+    if len(rows) < 2:
+        return 0.0
+    sign = 1 if rows[0][0] > rows[0][1] else -1   # direction of the move
+    return max([0.0] + [(q_d - goal) * sign for goal, q_d in rows])
+
+
+def report(node, joint, degrees):
+    write_log(node, joint, degrees)
+    lag = max((abs(q_d - q) for _, _, _, q_d, q, _ in node.log), default=0.0)
+    past = math.degrees(max(overshoot(node.log, "out"), overshoot(node.log, "back")))
+    out, back = turns(phase_values(node.log, "out")), turns(phase_values(node.log, "back"))
+    print(f"Direction changes of the command: out {out}, back {back}. "
+          f"Past the goal: {past:.3f} deg. "
+          f"Largest gap measured vs commanded: {math.degrees(lag):.2f} deg.")
+    if max(out, back) >= OSCILLATION_TURNS:
+        print("Verdict: OSCILLATION. Stop (white button if it still moves) and "
+              "look at the CSV before any other motion.")
+    elif past > OVERSHOOT_WARN:
+        print(f"Verdict: no oscillation, but the command went {past:.2f} deg past "
+              "the goal. Look at the CSV before the next motion.")
+    else:
+        print("Verdict: clean.")
 
 
 def refuse(message):
@@ -164,9 +256,12 @@ def main():
             except EOFError:
                 return refuse("cancelled.")
 
+        node.joint = j
+        node.phase = "still"
         node.posref = node.create_publisher(PosRef, f"{args.ns}/posref", 10)
         node.spin_for(0.5)   # discovery, before the first message
         for name, target in (("out", goal), ("back", start)):
+            node.phase = name
             result = node.go(target, j, MOVE_TIMEOUT)
             if isinstance(result, str):
                 if name == "out" and node.problem() is None:
@@ -174,10 +269,14 @@ def main():
                 return refuse(result)
             print(f"{name}: reached; other joints moved at most "
                   f"{math.degrees(result):.2f} deg.")
+        node.phase = "settle"
+        node.spin_for(SETTLE)
         back = max(abs(a - b) for a, b in zip(node.measured(), start))
         print(f"Done. Back at the start within {math.degrees(back):.2f} deg (largest joint).")
         return 0
     finally:
+        if node.log:
+            report(node, args.joint, args.degrees)
         node.destroy_node()
         rclpy.try_shutdown()
 

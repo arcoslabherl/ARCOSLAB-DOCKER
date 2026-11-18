@@ -73,8 +73,12 @@ check "libfranka alone refused while the driver runs" \
 check "refused before robot-enable" "$($DRIVER_NUDGE 7 5 --yes)" "run 'make robot-enable' first"
 bash $TOOLS/real_robot/robot_mode.sh enable --yes > /dev/null
 sleep 1
-check "J7 5 deg and back" "$($DRIVER_NUDGE 7 5 --yes)" "Done. Back at the start"
-check "J2 -10 deg and back" "$($DRIVER_NUDGE 2 -10 --yes)" "Done. Back at the start"
+for move in "7 5" "2 -10"; do
+    output=$($DRIVER_NUDGE $move --yes)
+    check "J${move% *} ${move#* } deg and back" "$output" "Done. Back at the start"
+    check "  no oscillation" "$output" "Verdict: clean."
+    check "  CSV written" "$output" "Log ([0-9]* driver states of J${move% *}): $NUDGE_LOG_DIR/nudge_driver_J"
+done
 for _ in $(seq 15); do
     timeout 10 ros2 service call /gello/enable std_srvs/srv/SetBool "{data: true}" \
         | grep -q "success=True" && break
