@@ -96,6 +96,7 @@ Results on 2026-11-09 (laptop, no RT kernel):
 | `FAKE_FRANKA_Q0` | `0 0 0 -1.57 0 1.57 0.71` | start pose (rad) |
 | `FAKE_FRANKA_LOG` | none | CSV with every cycle: `seg,k,t,step_ms,cb_us,c0..c6,q0..q6` |
 | `FAKE_FRANKA_STRICT` | `0` | `1`: throw a reflex on the first violation, like the robot without rate limiting |
+| `FAKE_FRANKA_LOSE_EVERY` | `0` | `N`: drop 2 packets every N cycles. While packets are lost, `q_d` goes on at the last velocity, as on the real Panda |
 | `FAKE_FRANKA_TAU` | `0.01` | s, lag of the reported position |
 | `FAKE_FRANKA_REPORT_MAX` | `5` | violations printed per type and segment (the rest are counted) |
 | `FAKE_FRANKA_UNREACHABLE` | `0` | `1`: the constructor fails, as with no robot on the network |

@@ -81,6 +81,7 @@ struct Robot::Impl {
   std::array<double, kJoints> q{};    // "measured" position
   std::array<double, kJoints> q_d{};  // last command accepted
   bool strict = false;
+  int lose_every = 0;  // drop 2 packets every N cycles (FAKE_FRANKA_LOSE_EVERY), 0 = never
   bool in_control = false;
   double tau = 0.01;
   int report_max = 5;
@@ -141,6 +142,7 @@ Robot::Robot(const std::string& franka_address, RealtimeConfig, size_t) : impl_(
   impl_->q = parse_pose(env("FAKE_FRANKA_Q0", "0 0 0 -1.57 0 1.57 0.71"));
   impl_->q_d = impl_->q;
   impl_->strict = env("FAKE_FRANKA_STRICT", "0") == "1";
+  impl_->lose_every = static_cast<int>(env_double("FAKE_FRANKA_LOSE_EVERY", 0));
   impl_->tau = env_double("FAKE_FRANKA_TAU", 0.01);
   impl_->report_max = static_cast<int>(env_double("FAKE_FRANKA_REPORT_MAX", 5));
   impl_->reflex_file = env("FAKE_FRANKA_REFLEX_FILE", "/tmp/fake_franka_reflex");
@@ -365,11 +367,26 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
       next += std::chrono::milliseconds(1);
       auto now = std::chrono::steady_clock::now();
       step_ms = 1;
+      uint64_t lost = 0;
       if (now > next + std::chrono::milliseconds(1)) {
-        uint64_t lost = static_cast<uint64_t>((now - next) / std::chrono::milliseconds(1));
+        lost = static_cast<uint64_t>((now - next) / std::chrono::milliseconds(1));
+      }
+      if (m.lose_every > 0 && k % static_cast<uint64_t>(m.lose_every) == 0) {
+        lost += 2;  // forced, to test lost packets on any computer
+      }
+      if (lost > 0) {
         s.missed += lost;
         step_ms += lost;
         next += std::chrono::milliseconds(lost);
+        // Like the real Panda (seen in a nudge log, 2026-11-17): while
+        // packets are lost the robot goes on at the last commanded velocity,
+        // so q_d moves ahead and the next command is judged from there.
+        std::lock_guard<std::mutex> lock(m.mutex);
+        for (int i = 0; i < kJoints; i++) {
+          prev[i] += prev_v[i] * kDt * static_cast<double>(lost);
+          m.q_d[i] = prev[i];
+        }
+        state.q_d = m.q_d;
       }
       std::this_thread::sleep_until(next);
     }

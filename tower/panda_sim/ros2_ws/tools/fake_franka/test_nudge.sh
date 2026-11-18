@@ -47,7 +47,14 @@ for move in "7 5" "1 -10" "4 10"; do
     check "  no limit violations" "$(grep -c VIOLATION <<< "$output")" "^0$"
 done
 
-echo "Through the driver"
+# The real Panda goes on at the last velocity while packets are lost; a
+# nudge that falls behind makes libfranka's rate limiter oscillate (2026-11-17)
+output=$(FAKE_FRANKA_LOSE_EVERY=97 $NUDGE fake 7 3 --yes 2>&1)
+check "J7 3 deg with lost packets" "$output" "Back at the start within 0.00 deg"
+check "  no limit violations" "$(grep -c VIOLATION <<< "$output")" "^0$"
+
+echo "Through the driver (with lost packets)"
+export FAKE_FRANKA_LOSE_EVERY=97
 setsid "$TOOLS/fake_franka/run_driver.sh" "$@" > "$OUT/driver.out" 2>&1 &
 DRIVER=$!
 setsid ros2 launch gello_teleop gello.launch.py backend:=fake robot:=real \

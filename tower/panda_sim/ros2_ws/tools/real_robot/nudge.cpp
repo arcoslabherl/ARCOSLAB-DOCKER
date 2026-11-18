@@ -7,7 +7,7 @@
 // impedance, joint position control with libfranka's rate limiter), so it
 // shows how the arm behaves under the driver. --stiff: the joint impedance of
 // libfranka's examples instead (3000..2000, the driver's is 500..200). Out in 3 s, 1 s still, back in
-// 3 s, 0.5 s still before finishing (counted in 1 ms control cycles). Each way
+// 3 s, 0.5 s still before finishing. Each way
 // is a minimum-jerk curve (zero velocity and acceleration at both ends). At
 // most 10 degrees, and only inside the joint limits minus 0.1 rad.
 //
@@ -208,10 +208,11 @@ int main(int argc, char** argv) {
             base = state.q_d;  // start exactly where the robot's command is
             started = true;
           } else {
-            // One step per cycle, as the driver's ruckig: after a lost
-            // packet the curve goes on from the last command instead of
-            // jumping ahead (a jump is a velocity/acceleration discontinuity)
-            time += 0.001;
+            // Real time, as libfranka's examples. While packets are lost the
+            // robot goes on at the last velocity (seen in a nudge log): a
+            // curve that only advanced 1 ms per call fell behind q_d, and
+            // libfranka's rate limiter then oscillated until a reflex.
+            time += period.toSec();
             lost += period.toMSec() - 1;
           }
 
