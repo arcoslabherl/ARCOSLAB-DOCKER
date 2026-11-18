@@ -80,6 +80,7 @@ std::string pose_deg(const std::array<double, 7>& q) {
 struct Sample {
   double t, cmd, q_d, dq_d, ddq_d, q, dq, rate;
   uint64_t period_ms;
+  std::array<double, 7> q_all, q_d_all;  // every joint, to see the ones that shouldn't move
 };
 
 void write_log(const std::vector<Sample>& log, int joint, double degrees, bool stiff) {
@@ -98,14 +99,20 @@ void write_log(const std::vector<Sample>& log, int joint, double degrees, bool s
     std::printf("(could not write the log to %s)\n", path.c_str());
     return;
   }
-  std::fprintf(file, "t,period_ms,cmd,q_d,dq_d,ddq_d,q,dq,success_rate\n");
+  std::fprintf(file, "t,period_ms,cmd,q_d,dq_d,ddq_d,q,dq,success_rate");
+  for (int i = 1; i <= 7; i++) std::fprintf(file, ",q%d", i);
+  for (int i = 1; i <= 7; i++) std::fprintf(file, ",q_d%d", i);
+  std::fprintf(file, "\n");
   for (const Sample& x : log) {
-    std::fprintf(file, "%.3f,%llu,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.4f\n", x.t,
+    std::fprintf(file, "%.3f,%llu,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.4f", x.t,
                  static_cast<unsigned long long>(x.period_ms), x.cmd, x.q_d, x.dq_d, x.ddq_d, x.q,
                  x.dq, x.rate);
+    for (double v : x.q_all) std::fprintf(file, ",%.9f", v);
+    for (double v : x.q_d_all) std::fprintf(file, ",%.9f", v);
+    std::fprintf(file, "\n");
   }
   std::fclose(file);
-  std::printf("Log (every cycle of J%d): %s\n", joint, path.c_str());
+  std::printf("Log (every cycle, all joints; J%d detailed): %s\n", joint, path.c_str());
 }
 
 int usage() {
@@ -175,7 +182,7 @@ int main(int argc, char** argv) {
     std::printf("Pose now (deg):  %s\n", pose_deg(start.q).c_str());
     std::printf("J%d: %.1f -> %.1f deg and back (%.0f s each way, %.0f s at the target).\n",
                 joint, deg(start.q[j]), deg(target), kMoveTime, kHoldTime);
-    std::printf("Peak speed %.3f rad/s. Joint impedance: %s. Nothing else moves. "
+    std::printf("Peak speed %.3f rad/s. Joint impedance: %s. Only this joint is commanded. "
                 "E-stop in hand.\n",
                 1.875 * std::abs(delta) / kMoveTime,
                 stiff ? "libfranka examples' (stiff)" : "the driver's");
@@ -240,7 +247,7 @@ int main(int argc, char** argv) {
           if (log.size() < log.capacity()) {
             log.push_back({time, command[j], state.q_d[j], state.dq_d[j], state.ddq_d[j],
                            state.q[j], state.dq[j], state.control_command_success_rate,
-                           period.toMSec()});
+                           period.toMSec(), state.q, state.q_d});
           }
           if (time >= total) return franka::MotionFinished(franka::JointPositions(base));
           return command;
@@ -248,6 +255,23 @@ int main(int argc, char** argv) {
         franka::ControllerMode::kJointImpedance, true, 1000.0);
 
     write_log(log, joint, degrees, stiff);
+    // How far the joints that weren't commanded moved, measured, from where
+    // they were before the motion (the soft joint impedance and an
+    // unmodelled load can make them give a little)
+    std::array<double, 7> drift{};
+    for (const Sample& x : log) {
+      for (int i = 0; i < 7; i++) {
+        drift[i] = std::max(drift[i], std::abs(x.q_all[i] - start.q[i]));
+      }
+    }
+    std::string others;
+    for (int i = 0; i < 7; i++) {
+      if (i == j) continue;
+      char text[32];
+      std::snprintf(text, sizeof(text), " J%d %.2f", i + 1, deg(drift[i]));
+      others += text;
+    }
+    std::printf("Other joints, largest measured move (deg):%s.\n", others.c_str());
     double back = 0.0;
     for (int i = 0; i < 7; i++) back = std::max(back, std::abs(last_q[i] - base[i]));
     std::printf("Done. Back at the start within %.2f deg (largest joint).\n", deg(back));
