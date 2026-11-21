@@ -77,9 +77,13 @@ The computer needs a PREEMPT_RT kernel: boot it before `make run REAL=1`.
    is blue.
 4. Nobody within the arm's reach. E-stop in hand.
 
-**First visit only**, before the driver: `make robot-echo` and
-`make robot-comm-test` (**moves the arm**), with someone who has
-operated the Panda. See the real robot README ("At the lab").
+**First visits only: small tests first**, with someone who has operated
+the Panda. See the real robot README ("At the lab"):
+
+    make robot-echo                     # no motion
+    make robot-nudge JOINT=7 DEG=5      # one joint 5° and back (driver stopped)
+    # then, with the driver running and enabled (below):
+    make robot-nudge VIA=driver JOINT=7 DEG=5
 
 ### Start
 

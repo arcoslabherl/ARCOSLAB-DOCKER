@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Builds the fake libfranka and the real driver (panda_driver_topics) against
-# it, in /ros2_ws/build/_fake_franka. Doesn't touch the colcon workspace or the
-# driver's COLCON_IGNORE. Run inside the container.
+# Builds the fake libfranka and, against it, the real driver
+# (panda_driver_topics) and real_robot/nudge, in /ros2_ws/build/_fake_franka.
+# Doesn't touch the colcon workspace or the driver's COLCON_IGNORE. Run inside
+# the container.
 #   build.sh [<driver patch>]   also builds driver_patched/ with the patch
 set -e
 
@@ -22,6 +23,10 @@ cmake -S "$DRIVER_SRC" -B "$OUT/driver" -DCMAKE_BUILD_TYPE=Release \
     -DFranka_DIR="$OUT/install/lib/cmake/Franka"
 cmake --build "$OUT/driver" -j"$(nproc)"
 echo "Built: $OUT/driver/panda_driver_topics (linked to the FAKE libfranka)"
+
+g++ -O2 -std=c++17 "$HERE/../real_robot/nudge.cpp" -I"$OUT/install/include" \
+    -L"$OUT/install/lib" -Wl,-rpath,"$OUT/install/lib" -lfranka -o "$OUT/nudge"
+echo "Built: $OUT/nudge (linked to the FAKE libfranka)"
 
 # Optionally, the same driver with a patch, built from a copy (src/ stays at
 # the pinned commit). patches/ isn't mounted in the container: docker cp it.
