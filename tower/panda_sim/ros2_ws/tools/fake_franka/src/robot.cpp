@@ -4,6 +4,8 @@
 #include <franka/exception.h>
 #include <franka/robot.h>
 
+#include "rate_limiting.h"
+
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -82,6 +84,8 @@ struct Robot::Impl {
   std::array<double, kJoints> q_d{};  // last command accepted
   bool strict = false;
   int lose_every = 0;  // drop 2 packets every N cycles (FAKE_FRANKA_LOSE_EVERY), 0 = never
+  bool extrapolate_acceleration = true;  // FAKE_FRANKA_EXTRAPOLATE: acceleration | velocity
+  int limit_rate_override = -1;          // FAKE_FRANKA_LIMIT_RATE: unset = as the caller asks
   bool in_control = false;
   double tau = 0.01;
   int report_max = 5;
@@ -98,6 +102,9 @@ struct Robot::Impl {
     uint64_t slow_callbacks = 0;
     double max_callback_us = 0.0;
     uint64_t stalls = 0;  // command identical to the previous one while moving
+    uint64_t limited = 0;  // cycles where the rate limiter changed the command
+    double max_limited = 0.0;  // largest change it made (rad)
+    uint64_t saturated = 0;  // cycles with |ddq_d| at >= 90 % of the limit
     std::array<double, kJoints> peak_v{}, peak_a{}, peak_j{};
     std::array<uint64_t, kNumViolations> violations{};
   } stats;
@@ -112,17 +119,21 @@ struct Robot::Impl {
                  (unsigned long long)s.missed, kCallbackBudgetUs,
                  (unsigned long long)s.slow_callbacks, s.max_callback_us,
                  (unsigned long long)s.stalls);
+    std::fprintf(stderr,
+                 "[fake_franka] rate limiter changed %llu commands (largest %.6f rad), "
+                 "|ddq_d| >= 90%% of the limit in %llu cycles\n",
+                 (unsigned long long)s.limited, s.max_limited, (unsigned long long)s.saturated);
     std::array<double, kJoints> rv{}, ra{}, rj{};
     for (int i = 0; i < kJoints; i++) {
       rv[i] = s.peak_v[i] / kMaxVelocity[i];
       ra[i] = s.peak_a[i] / kMaxAcceleration[i];
       rj[i] = s.peak_j[i] / kMaxJerk[i];
     }
-    std::fprintf(stderr, "[fake_franka] peak |v| rad/s   %s  (fraction of limit %s)\n",
+    std::fprintf(stderr, "[fake_franka] raw peak |v| rad/s   %s  (fraction of limit %s)\n",
                  fmt7(s.peak_v, 3).c_str(), fmt7(rv, 3).c_str());
-    std::fprintf(stderr, "[fake_franka] peak |a| rad/s2  %s  (fraction of limit %s)\n",
+    std::fprintf(stderr, "[fake_franka] raw peak |a| rad/s2  %s  (fraction of limit %s)\n",
                  fmt7(s.peak_a, 2).c_str(), fmt7(ra, 3).c_str());
-    std::fprintf(stderr, "[fake_franka] peak |j| rad/s3  %s  (fraction of limit %s)\n",
+    std::fprintf(stderr, "[fake_franka] raw peak |j| rad/s3  %s  (fraction of limit %s)\n",
                  fmt7(s.peak_j, 1).c_str(), fmt7(rj, 3).c_str());
     for (int k = 0; k < kNumViolations; k++) {
       std::fprintf(stderr, "[fake_franka] %-52s %llu\n", kViolationNames[k],
@@ -143,6 +154,16 @@ Robot::Robot(const std::string& franka_address, RealtimeConfig, size_t) : impl_(
   impl_->q_d = impl_->q;
   impl_->strict = env("FAKE_FRANKA_STRICT", "0") == "1";
   impl_->lose_every = static_cast<int>(env_double("FAKE_FRANKA_LOSE_EVERY", 0));
+  const std::string extrapolate = env("FAKE_FRANKA_EXTRAPOLATE", "acceleration");
+  if (extrapolate != "acceleration" && extrapolate != "velocity") {
+    std::fprintf(stderr, "[fake_franka] bad FAKE_FRANKA_EXTRAPOLATE '%s'\n", extrapolate.c_str());
+    std::exit(2);
+  }
+  impl_->extrapolate_acceleration = extrapolate == "acceleration";
+  const std::string limit_rate = env("FAKE_FRANKA_LIMIT_RATE", "");
+  if (!limit_rate.empty()) {
+    impl_->limit_rate_override = limit_rate == "0" ? 0 : 1;
+  }
   impl_->tau = env_double("FAKE_FRANKA_TAU", 0.01);
   impl_->report_max = static_cast<int>(env_double("FAKE_FRANKA_REPORT_MAX", 5));
   impl_->reflex_file = env("FAKE_FRANKA_REFLEX_FILE", "/tmp/fake_franka_reflex");
@@ -157,12 +178,14 @@ Robot::Robot(const std::string& franka_address, RealtimeConfig, size_t) : impl_(
     std::fprintf(impl_->log, "seg,k,t,step_ms,cb_us");
     for (int i = 0; i < kJoints; i++) std::fprintf(impl_->log, ",c%d", i);
     for (int i = 0; i < kJoints; i++) std::fprintf(impl_->log, ",q%d", i);
+    for (int i = 0; i < kJoints; i++) std::fprintf(impl_->log, ",d%d", i);
     std::fprintf(impl_->log, "\n");
   }
   std::fprintf(stderr,
                "[fake_franka] Robot '%s' (FAKE). Start pose %s, strict %d, tau %.3f s, "
-               "reflex trigger file %s, log %s\n",
+               "lost packets extrapolate %s, reflex trigger file %s, log %s\n",
                franka_address.c_str(), fmt7(impl_->q).c_str(), impl_->strict, impl_->tau,
+               extrapolate.c_str(),
                impl_->reflex_file.c_str(), log_path.empty() ? "(none)" : log_path.c_str());
 }
 
@@ -223,18 +246,20 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
     m.segment++;
     m.stats = Impl::Stats{};
   }
-  std::fprintf(stderr, "[fake_franka] control() starts, segment %d (limit_rate %d, cutoff %.0f)\n",
-               m.segment, limit_rate, cutoff_frequency);
-  if (limit_rate) {
-    std::fprintf(stderr,
-                 "[fake_franka] note: the real libfranka would rate-limit (clip) the commands; "
-                 "this fake does not, it reports the raw stream\n");
-  }
+  const bool limit = m.limit_rate_override >= 0 ? m.limit_rate_override == 1 : limit_rate;
+  std::fprintf(stderr,
+               "[fake_franka] control() starts, segment %d (limit_rate %d%s, cutoff %.0f%s)\n",
+               m.segment, limit, m.limit_rate_override >= 0 ? " forced by FAKE_FRANKA_LIMIT_RATE" : "",
+               cutoff_frequency, cutoff_frequency < 1000.0 ? ": the real low-pass filter is NOT modelled" : ", filter off");
 
+  // The robot's side: the last command it accepted and its derivatives. The
+  // real libfranka sends these back as q_d, dq_d, ddq_d, and its rate limiter
+  // works from them.
+  std::array<double, kJoints> q_d = m.q_d, dq_d{}, ddq_d{};
   RobotState state;
   state.q = m.q;
-  state.q_d = m.q_d;
-  std::array<double, kJoints> prev = m.q_d, prev_v{}, prev_a{};
+  state.q_d = q_d;
+  std::array<double, kJoints> prev_raw = q_d;
   std::array<int, kNumViolations> reported{};
   uint64_t step_ms = 0;  // libfranka's first call gets a zero duration
   uint64_t k = 0;
@@ -280,27 +305,45 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
         s.slow_callbacks++;
       }
 
-      std::array<double, kJoints> v{}, a{}, j{};
-      bool moving_before = false, same = true;
+      const std::array<double, kJoints> raw = command.q;
       for (int i = 0; i < kJoints; i++) {
-        double c = command.q[i];
-        if (!std::isfinite(c)) {
+        if (!std::isfinite(raw[i])) {
           m.error = true;
           throw ControlException("libfranka (fake): command is not finite (NaN/inf)");
         }
-        v[i] = (c - prev[i]) / kDt;
-        a[i] = (v[i] - prev_v[i]) / kDt;
-        j[i] = (a[i] - prev_a[i]) / kDt;
-        moving_before = moving_before || std::fabs(prev_v[i]) > 1e-3;
-        same = same && c == prev[i];
-        s.peak_v[i] = std::max(s.peak_v[i], std::fabs(v[i]));
-        s.peak_a[i] = std::max(s.peak_a[i], std::fabs(a[i]));
-        s.peak_j[i] = std::max(s.peak_j[i], std::fabs(j[i]));
+      }
+      // What the robot receives: the command after libfranka's rate limiter
+      const std::array<double, kJoints> c =
+          limit ? libfranka_080::limitRate(raw, q_d, dq_d, ddq_d) : raw;
+
+      // Violations and peaks are of the caller's raw command, judged from the
+      // robot's q_d/dq_d/ddq_d: a violation is a caller (driver) problem that
+      // the rate limiter, when on, has to fix. v and a are what the robot
+      // accepted (after the limiter).
+      std::array<double, kJoints> v{}, a{};
+      bool moving_before = false, same = true, changed = false, saturated = false;
+      for (int i = 0; i < kJoints; i++) {
+        const double rv = (raw[i] - q_d[i]) / kDt;
+        const double ra = (rv - dq_d[i]) / kDt;
+        const double rj = (ra - ddq_d[i]) / kDt;
+        v[i] = (c[i] - q_d[i]) / kDt;
+        a[i] = (v[i] - dq_d[i]) / kDt;
+        moving_before = moving_before || std::fabs(dq_d[i]) > 1e-3;
+        same = same && raw[i] == prev_raw[i];
+        const double change = std::fabs(c[i] - raw[i]);
+        if (change > 1e-12) {
+          changed = true;
+          s.max_limited = std::max(s.max_limited, change);
+        }
+        saturated = saturated || std::fabs(a[i]) >= 0.9 * kMaxAcceleration[i];
+        s.peak_v[i] = std::max(s.peak_v[i], std::fabs(rv));
+        s.peak_a[i] = std::max(s.peak_a[i], std::fabs(ra));
+        s.peak_j[i] = std::max(s.peak_j[i], std::fabs(rj));
         const bool bad[kNumViolations] = {
-            std::fabs(v[i]) > kMaxVelocity[i],
-            std::fabs(a[i]) > kMaxAcceleration[i],
-            std::fabs(j[i]) > kMaxJerk[i],
-            c < kLowerLimit[i] || c > kUpperLimit[i],
+            std::fabs(rv) > kMaxVelocity[i],
+            std::fabs(ra) > kMaxAcceleration[i],
+            std::fabs(rj) > kMaxJerk[i],
+            raw[i] < kLowerLimit[i] || raw[i] > kUpperLimit[i],
         };
         for (int type = 0; type < kNumViolations; type++) {
           if (!bad[type]) continue;
@@ -309,7 +352,7 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
             reported[type]++;
             std::fprintf(stderr,
                          "[fake_franka] VIOLATION %s: t=%.3f s J%d cmd %.5f v %.3f a %.2f j %.1f%s\n",
-                         kViolationNames[type], t, i + 1, c, v[i], a[i], j[i],
+                         kViolationNames[type], t, i + 1, raw[i], rv, ra, rj,
                          reported[type] == m.report_max ? " (further ones only counted)" : "");
           }
           if (m.strict) {
@@ -320,39 +363,43 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
           }
         }
       }
+      s.limited += changed ? 1 : 0;
+      s.saturated += saturated ? 1 : 0;
       if (same && moving_before) {
         s.stalls++;
         if (s.stalls <= static_cast<uint64_t>(m.report_max)) {
           std::fprintf(stderr,
                        "[fake_franka] STALL: t=%.3f s, command repeated while moving "
-                       "(|v| was up to %.3f rad/s)\n",
-                       t, *std::max_element(prev_v.begin(), prev_v.end(),
+                       "(|dq_d| was up to %.3f rad/s)\n",
+                       t, *std::max_element(dq_d.begin(), dq_d.end(),
                                             [](double x, double y) { return std::fabs(x) < std::fabs(y); }));
         }
       }
+      prev_raw = raw;
+      q_d = c;
+      dq_d = v;
+      ddq_d = a;
 
-      // The robot follows the command with a first-order lag.
+      // The robot follows q_d with a first-order lag.
       {
         std::lock_guard<std::mutex> lock(m.mutex);
         for (int i = 0; i < kJoints; i++) {
-          m.q_d[i] = command.q[i];
+          m.q_d[i] = q_d[i];
           m.q[i] += (m.q_d[i] - m.q[i]) * std::min(1.0, kDt / m.tau);
         }
         state.q = m.q;
-        state.q_d = m.q_d;
-        state.dq_d = v;
-        state.ddq_d = a;
-        state.dq = v;
+        state.q_d = q_d;
+        state.dq_d = dq_d;
+        state.ddq_d = ddq_d;
+        state.dq = dq_d;
       }
-      prev = command.q;
-      prev_v = v;
-      prev_a = a;
 
       if (m.log != nullptr) {
         std::fprintf(m.log, "%d,%llu,%.3f,%llu,%.1f", m.segment, (unsigned long long)k, t,
                      (unsigned long long)step_ms, cb_us);
-        for (int i = 0; i < kJoints; i++) std::fprintf(m.log, ",%.7f", command.q[i]);
+        for (int i = 0; i < kJoints; i++) std::fprintf(m.log, ",%.7f", raw[i]);
         for (int i = 0; i < kJoints; i++) std::fprintf(m.log, ",%.7f", state.q[i]);
+        for (int i = 0; i < kJoints; i++) std::fprintf(m.log, ",%.7f", q_d[i]);
         std::fprintf(m.log, "\n");
         if (k % 1000 == 0) std::fflush(m.log);
       }
@@ -378,15 +425,26 @@ void Robot::control(JointPositionsCallback callback, ControllerMode, bool limit_
         s.missed += lost;
         step_ms += lost;
         next += std::chrono::milliseconds(lost);
-        // Like the real Panda (seen in a nudge log, 2026-11-17): while
-        // packets are lost the robot goes on at the last commanded velocity,
-        // so q_d moves ahead and the next command is judged from there.
+        // While packets are lost the robot goes on by itself, so q_d moves
+        // ahead and the next command is judged (and rate-limited) from there.
+        // libfranka 0.8.0's rate_limiting.h: "When a packet is lost, FCI
+        // assumes a constant acceleration model"; FAKE_FRANKA_EXTRAPOLATE=
+        // velocity keeps the velocity instead (our first model, 2026-11-17).
         std::lock_guard<std::mutex> lock(m.mutex);
-        for (int i = 0; i < kJoints; i++) {
-          prev[i] += prev_v[i] * kDt * static_cast<double>(lost);
-          m.q_d[i] = prev[i];
+        for (uint64_t n = 0; n < lost; n++) {
+          for (int i = 0; i < kJoints; i++) {
+            if (m.extrapolate_acceleration) {
+              dq_d[i] += ddq_d[i] * kDt;
+            }
+            q_d[i] += dq_d[i] * kDt;
+            m.q[i] += (q_d[i] - m.q[i]) * std::min(1.0, kDt / m.tau);
+          }
         }
-        state.q_d = m.q_d;
+        m.q_d = q_d;
+        state.q = m.q;
+        state.q_d = q_d;
+        state.dq_d = dq_d;
+        state.dq = dq_d;
       }
       std::this_thread::sleep_until(next);
     }

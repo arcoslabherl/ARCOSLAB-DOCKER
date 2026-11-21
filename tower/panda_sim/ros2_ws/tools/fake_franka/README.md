@@ -8,17 +8,27 @@ pipeline on top of it, before touching the real Panda.
 What the fake does:
 
 - **`Robot::control()`** calls the driver's motion generator at 1 kHz. It
-  checks every command the way the Panda's controller would: velocity,
-  acceleration and jerk (finite differences over 1 ms) and position, against
-  the Panda's limits. It reports each violation with libfranka's error names.
-  It also reports **stalls** (the same command twice while moving) and slow
+  checks every raw command against the robot's `q_d`, `dq_d`, `ddq_d`:
+  velocity, acceleration and jerk (finite differences over 1 ms) and
+  position, against the Panda's limits. It reports each violation with
+  libfranka's error names: a violation is a caller (driver) problem. It also
+  reports **stalls** (the same command twice while moving) and slow
   callbacks (over 300 µs).
-  - The reported "measured" position follows the command with a first-order
-    lag (`FAKE_FRANKA_TAU`). It is not the arm's dynamics.
-  - The real libfranka is called with `limit_rate = true`, so it would clip
-    the commands before sending them. The fake doesn't clip: it shows the raw
-    stream the driver produces. Any violation is a driver problem. On the
-    real robot it means either a reflex or a hard, rate-limited jerk.
+  - **Rate limiter:** with `limit_rate = true` (the driver and the nudge) the
+    command then goes through libfranka 0.8.0's own rate limiter
+    (`src/rate_limiting.h`, copied from libfranka), as the real library does,
+    and the robot accepts the limited command. The summary says how many
+    commands the limiter changed and in how many cycles `|ddq_d|` sat at
+    ≥ 90 % of the limit: both should be 0; many saturated cycles is the
+    2026-11-17 oscillation (the old 1 ms-per-call nudge reproduces it here).
+    With `cutoff_frequency` 1000 the real low-pass filter is off; below 1000
+    it isn't modelled.
+  - **Lost packets:** the robot goes on by itself, with constant
+    acceleration ("When a packet is lost, FCI assumes a constant
+    acceleration model", libfranka 0.8.0 `rate_limiting.h`), so `q_d` moves
+    ahead and the next command is judged and limited from there.
+  - The reported "measured" position follows `q_d` with a first-order lag
+    (`FAKE_FRANKA_TAU`). It is not the arm's dynamics.
 - **`Gripper`** is blocking, like libfranka: `homing`, `move`, `grasp` (with
   an optional object) and `stop`.
 
@@ -94,9 +104,11 @@ Results on 2026-11-09 (laptop, no RT kernel):
 | Variable | Default | Meaning |
 |---|---|---|
 | `FAKE_FRANKA_Q0` | `0 0 0 -1.57 0 1.57 0.71` | start pose (rad) |
-| `FAKE_FRANKA_LOG` | none | CSV with every cycle: `seg,k,t,step_ms,cb_us,c0..c6,q0..q6` |
+| `FAKE_FRANKA_LOG` | none | CSV with every cycle: `seg,k,t,step_ms,cb_us,c0..c6,q0..q6,d0..d6` (`c` raw command, `q` measured, `d` accepted `q_d`) |
 | `FAKE_FRANKA_STRICT` | `0` | `1`: throw a reflex on the first violation, like the robot without rate limiting |
-| `FAKE_FRANKA_LOSE_EVERY` | `0` | `N`: drop 2 packets every N cycles. While packets are lost, `q_d` goes on at the last velocity, as on the real Panda |
+| `FAKE_FRANKA_LIMIT_RATE` | as the caller | `0`/`1`: force libfranka's rate limiter off/on (A/B without changing the caller). With `0` and `STRICT=1` a violation stops the robot, as the real one would |
+| `FAKE_FRANKA_LOSE_EVERY` | `0` | `N`: drop 2 packets every N cycles; meanwhile the robot extrapolates `q_d` |
+| `FAKE_FRANKA_EXTRAPOLATE` | `acceleration` | how the robot extrapolates during lost packets: `acceleration` (constant, as libfranka documents) or `velocity` (our first model, 2026-11-17) |
 | `FAKE_FRANKA_TAU` | `0.01` | s, lag of the reported position |
 | `FAKE_FRANKA_REPORT_MAX` | `5` | violations printed per type and segment (the rest are counted) |
 | `FAKE_FRANKA_UNREACHABLE` | `0` | `1`: the constructor fails, as with no robot on the network |
@@ -120,8 +132,14 @@ the motion finishes.
 
 - No dynamics, contact, payload or collision reflexes: only the command
   stream is checked. The real robot can still reflex on contact.
-- No rate limiting (see above), no real-time scheduling, no packet loss
-  except the laptop's own jitter (`missed` in the summary).
+- No real-time scheduling, no packet loss except the forced one and the
+  laptop's own jitter (`missed` in the summary), no low-pass filter below
+  1000 Hz, no 20-packet communication limit.
+- The real robot can still reject a rate-limited command (2026-11-17 F5:
+  discontinuity errors with the limiter on), probably from state/command
+  timing the fake doesn't model: no violations here doesn't rule that out.
+- Not yet checked against a real log number by number: the 2026-11-17 23:55
+  CSV (`nudge_J7_2deg_20261117_235529.csv`, on `arcospanda`) is the reference.
 - The driver aborts with a core dump on Ctrl+C. Most likely it's the driver
   (it `exit()`s from its signal handler while its threads run); not
   investigated, harmless for the tests.
