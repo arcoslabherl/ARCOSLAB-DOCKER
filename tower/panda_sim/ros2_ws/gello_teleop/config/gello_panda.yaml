@@ -69,6 +69,14 @@ gello_calibrator:
     data_timeout: 0.3        # s, control disables if data stops
     status_interval: 0.5     # s, how often the status is logged
 
+    # Joint mask, for the first real-robot tests (one joint at a time): only
+    # these joints (1..7) follow the GELLO, the rest hold the robot's pose at
+    # enable, and only they must match it to enable. Active joints stay
+    # within active_range of that pose (0 = no range limit). Normal teleop:
+    # all joints, no range. 'make gello JOINTS=7 [RANGE=10]' sets both.
+    active_joints: [1, 2, 3, 4, 5, 6, 7]
+    active_range: 0.0        # rad
+
     # Gripper: while enabled, the trigger (0 open .. 1 closed) commands a
     # width of gripper_max_width .. 0 with 'move'. The service blocks until
     # the move ends, so one call at a time, and only when the width changed

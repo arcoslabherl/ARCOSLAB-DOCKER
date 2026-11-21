@@ -5,12 +5,17 @@ set -e
 # ROS 2 Humble
 #
 # Usage: start_gello.sh [dynamixel|fake] [serial port] [sim|real] [on|off]
+#                       [all|<joints>] [<range deg>]
 #   on|off: the gripper (off: the calibrator leaves it alone)
+#   joints: joint mask, e.g. 7 or 6,7 (all: every joint); range: how far
+#   they may go from the pose at enable, in degrees
 
 BACKEND="${1:-dynamixel}"
 PORT="${2:-auto}"   # auto: gello_find_port looks for the GELLO
 ROBOT="${3:-sim}"
 GRIPPER="${4:-on}"
+JOINTS="${5:-all}"
+RANGE="${6:-10}"
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -37,10 +42,12 @@ if [[ -n "${SESSION_ID:-}" ]]; then
     ps -o pgid= -p $$ | tr -d ' ' > "/tmp/ros2_session.${SESSION_ID}"
 fi
 
-echo "Starting GELLO (${BACKEND} backend, ${ROBOT} Panda, gripper ${GRIPPER})..."
+echo "Starting GELLO (${BACKEND} backend, ${ROBOT} Panda, gripper ${GRIPPER}, joints ${JOINTS})..."
 
 ros2 launch gello_teleop gello.launch.py \
     backend:="$BACKEND" \
     port:="$PORT" \
     robot:="$ROBOT" \
-    gripper:="$GRIPPER"
+    gripper:="$GRIPPER" \
+    joints:="$JOINTS" \
+    range:="$RANGE"

@@ -99,10 +99,14 @@ the Panda. See the real robot README ("At the lab"):
     make robot-enable       # asks for 'yes'; the driver holds the arm's pose
 
     # Terminal 3
-    make gello ROBOT=real GRIPPER=off   # first sessions: the gripper stays still
+    make gello ROBOT=real GRIPPER=off JOINTS=7   # first sessions: J7 only, ±10°
 
 Move the GELLO to the **arm's** pose until terminal 3 prints
-`GELLO matches the Panda: READY to enable` (every joint within 2°).
+`GELLO matches the Panda: READY to enable` (within 2°; with `JOINTS`,
+only those joints must match, the others hold their pose). First sessions:
+one joint at a time (`JOINTS=7`, then 6, 5...), small slow moves; the
+gripper stays still (`GRIPPER=off`). Then all joints, still with a range
+(`JOINTS=1,2,3,4,5,6,7`), before normal teleop (no `JOINTS`).
 
     # Terminal 2
     make gello-enable       # the arm follows the GELLO

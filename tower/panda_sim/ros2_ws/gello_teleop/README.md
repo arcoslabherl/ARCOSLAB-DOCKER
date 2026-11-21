@@ -140,6 +140,18 @@ than `enable_tolerance` (0.1 rad, 5.7 degrees; 2 degrees on the real
 Panda), or if the trigger doesn't match the
 gripper.
 
+### Joint mask (first tests on the real Panda)
+
+    make gello ROBOT=real GRIPPER=off JOINTS=7          # one joint
+    make gello ROBOT=real GRIPPER=off JOINTS=6,7 RANGE=5
+
+Only the listed joints (1..7) follow the GELLO, and only they must match
+to enable. The others hold the robot's commanded pose at enable. The
+listed ones stay within `RANGE` degrees (default 10) of that pose: past
+it the target stops at the bound and the calibrator warns. Without
+`JOINTS` all joints follow, with no range limit (launch arguments
+`joints:=` and `range:=`; parameters `active_joints`, `active_range`).
+
 ## Topics
 
 - `/gello/joint_states`: GELLO joint angles (rad)

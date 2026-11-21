@@ -13,6 +13,10 @@ Optionally, pressing the trigger past a threshold sends a 'grasp' instead, to
 hold an object with force. Enabling also needs the trigger to match the
 gripper's width, so the gripper doesn't open and drop what it holds.
 
+Joint mask (first real-robot tests): only the active joints follow the GELLO,
+within active_range of the robot's commanded pose at enable; the others hold
+that pose, and only the active ones must match to enable.
+
 It also watches the robot's status (enabled, emergency stop): control only
 runs while the robot reports itself enabled and without emergency. After a
 reflex, the real driver keeps publishing the frozen state, so data timeouts
@@ -69,6 +73,10 @@ class GelloCalibrator(Node):
 
         self.gello_position = None
         self.gello_time = None
+
+        # The robot's commanded pose at enable: inactive joints hold it, and
+        # active ones stay within active_range of it
+        self.hold = None
 
         self.robot_problem = None
         self.robot_status_time = None
@@ -159,6 +167,19 @@ class GelloCalibrator(Node):
             "GELLO calibrator ready. Control DISABLED. Move the GELLO to the "
             "Panda's pose, then enable."
         )
+        if not all(self.active) or self.active_range > 0.0:
+            joints = ", ".join(
+                f"J{index}" for index, follows in enumerate(self.active, 1)
+                if follows)
+            limit = (f"within {math.degrees(self.active_range):.0f} deg of "
+                     "the pose at enable" if self.active_range > 0.0
+                     else "with no range limit")
+            self.get_logger().warning(
+                f"Joint mask: only {joints} "
+                f"{'follows' if sum(self.active) == 1 else 'follow'} "
+                f"the GELLO, {limit}; "
+                "the other joints hold the pose at enable."
+            )
 
     def load_parameters(self):
         # Values come only from config/gello_panda.yaml (no defaults here,
@@ -194,6 +215,8 @@ class GelloCalibrator(Node):
             "gripper_grasp_threshold": DOUBLE,
             "gripper_grasp_release": DOUBLE,
             "gripper_grasp_force": DOUBLE,
+            "active_joints": Parameter.Type.INTEGER_ARRAY,
+            "active_range": DOUBLE,
         }
 
         params = {}
@@ -248,6 +271,12 @@ class GelloCalibrator(Node):
 
         if self.enable_tolerance <= 0.0:
             raise ValueError("enable_tolerance must be positive")
+
+        self.active = safety.active_mask(params["active_joints"],
+                                         len(JOINT_NAMES))
+        self.active_range = params["active_range"]
+        if self.active_range < 0.0:
+            raise ValueError("active_range can't be negative")
 
         for name in ("status_timeout", "gripper_max_width",
                      "gripper_min_change",
@@ -311,8 +340,10 @@ class GelloCalibrator(Node):
         if not self.enabled:
             return
 
-        targets = safety.clip_to_limits(
-            positions, self.panda_lower, self.panda_upper)
+        targets = safety.mask_targets(
+            safety.clip_to_limits(
+                positions, self.panda_lower, self.panda_upper),
+            self.hold, self.active, self.active_range)
 
         output = JointState()
         output.header.stamp = self.get_clock().now().to_msg()
@@ -407,9 +438,16 @@ class GelloCalibrator(Node):
             )
 
     def pose_differences(self):
-        return safety.pose_differences(
+        """Per joint, (number, GELLO's target minus the Panda), active only."""
+        differences = safety.pose_differences(
             self.gello_position, self.panda_position,
             self.panda_lower, self.panda_upper)
+        return [
+            (index, difference)
+            for index, (difference, follows)
+            in enumerate(zip(differences, self.active), start=1)
+            if follows
+        ]
 
     def publish_posref(self, position):
         command = PosRef()
@@ -472,7 +510,7 @@ class GelloCalibrator(Node):
 
         far = [
             f"J{index} {math.degrees(difference):+.1f} deg"
-            for index, difference in enumerate(self.pose_differences(), start=1)
+            for index, difference in self.pose_differences()
             if abs(difference) > self.enable_tolerance
         ]
         if far:
@@ -489,6 +527,8 @@ class GelloCalibrator(Node):
             response.message = gripper_problem
             return response
 
+        # Before enabling: the GELLO callback reads it as soon as enabled
+        self.hold = list(self.panda_commanded)
         self.enabled = True
         self.gripper.reset()
 
@@ -553,15 +593,28 @@ class GelloCalibrator(Node):
                     f"At the joint limit (Panda's minus the margin): "
                     f"{', '.join(at_limit)}"
                 )
+            if self.active_range > 0.0:
+                at_range = [
+                    f"J{index}"
+                    for index, (position, held, follows) in enumerate(zip(
+                        self.gello_position, self.hold, self.active), start=1)
+                    if follows and abs(position - held) > self.active_range
+                ]
+                if at_range:
+                    self.get_logger().warning(
+                        f"At the allowed range "
+                        f"(+-{math.degrees(self.active_range):.0f} deg "
+                        f"from the pose at enable): {', '.join(at_range)}"
+                    )
             return
 
         moves = []
-        for index, difference in enumerate(self.pose_differences()):
+        for index, difference in self.pose_differences():
             if abs(difference) > self.enable_tolerance:
                 # A positive difference: the GELLO's angle must shrink
-                hint = MOVE_HINTS[index][1 if difference > 0 else 0]
+                hint = MOVE_HINTS[index - 1][1 if difference > 0 else 0]
                 moves.append(
-                    f"J{index + 1} {abs(math.degrees(difference)):.0f} deg, "
+                    f"J{index} {abs(math.degrees(difference)):.0f} deg, "
                     f"{hint}"
                 )
 

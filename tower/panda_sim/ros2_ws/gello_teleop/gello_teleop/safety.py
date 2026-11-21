@@ -47,6 +47,41 @@ def pose_differences(gello, panda, lower, upper):
     ]
 
 
+def active_mask(joints, count=7):
+    """Which joints follow the GELLO, from their numbers (1..count).
+
+    For the first real-robot tests, one joint (or a few) at a time.
+    """
+    joints = list(joints)
+    if not joints:
+        raise ValueError("active_joints needs at least one joint")
+    bad = [joint for joint in joints if not 1 <= joint <= count]
+    if bad:
+        raise ValueError(f"active_joints must be 1 to {count}, not {bad}")
+    if len(set(joints)) != len(joints):
+        raise ValueError(f"active_joints repeats a joint: {joints}")
+    return [index + 1 in joints for index in range(count)]
+
+
+def mask_targets(targets, hold, active, max_range):
+    """The targets with only the active joints following the GELLO.
+
+    targets: the GELLO's angles, already clipped to the joint limits.
+    hold: the robot's commanded pose when control was enabled. Inactive
+    joints stay there. Active ones stay within max_range (rad) of it; 0 means
+    no range limit.
+    """
+    masked = []
+    for target, held, follows in zip(targets, hold, active):
+        if not follows:
+            masked.append(held)
+        elif max_range > 0.0:
+            masked.append(max(held - max_range, min(held + max_range, target)))
+        else:
+            masked.append(target)
+    return masked
+
+
 def joint_jumped(current, previous, max_change):
     """Whether any joint moved more than max_change since the last sample."""
     if previous is None:

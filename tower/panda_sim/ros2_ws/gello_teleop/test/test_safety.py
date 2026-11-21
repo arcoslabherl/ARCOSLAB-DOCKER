@@ -99,6 +99,58 @@ def test_gello_past_a_limit_matches_a_panda_at_it():
         [0.0] * 7)
 
 
+def test_active_mask():
+    assert safety.active_mask([7]) == [False] * 6 + [True]
+    assert safety.active_mask([7, 1]) == [True] + [False] * 5 + [True]
+    assert safety.active_mask(range(1, 8)) == [True] * 7
+
+
+@pytest.mark.parametrize("joints, message", [
+    ([], "at least one"), ([0], "1 to 7"), ([8], "1 to 7"), ([7, 7], "repeats")])
+def test_active_mask_rejects(joints, message):
+    with pytest.raises(ValueError, match=message):
+        safety.active_mask(joints)
+
+
+def test_all_joints_active_and_no_range_by_default():
+    assert safety.active_mask(CALIBRATOR["active_joints"]) == [True] * 7
+    assert CALIBRATOR["active_range"] == 0.0
+
+
+def test_inactive_joints_hold_the_pose_at_enable():
+    hold = [0.1 * i for i in range(7)]
+    targets = [1.0] * 7
+    masked = safety.mask_targets(targets, hold, safety.active_mask([7]), 0.0)
+    assert masked == hold[:6] + [1.0]
+
+
+def test_active_joints_stay_within_the_range():
+    hold = [0.0] * 7
+    active = safety.active_mask([6, 7])
+    range_ = math.radians(10)
+    masked = safety.mask_targets([0.5] * 5 + [0.5, -0.5], hold, active, range_)
+    assert masked == pytest.approx([0.0] * 5 + [range_, -range_])
+    inside = safety.mask_targets([0.0] * 5 + [0.1, -0.1], hold, active, range_)
+    assert inside == pytest.approx([0.0] * 5 + [0.1, -0.1])
+
+
+def test_no_mask_no_range_changes_nothing():
+    targets = [0.3, -0.2, 0.1, -1.5, 0.0, 1.5, 0.7]
+    assert safety.mask_targets(
+        targets, HOME, safety.active_mask(range(1, 8)), 0.0) == targets
+
+
+def test_held_joint_past_the_margin_stays_where_the_robot_is():
+    # An inactive joint holds the robot's own pose, even outside the margin:
+    # clipping it would move the robot
+    hold = list(HOME)
+    hold[3] = UPPER[3] - 0.01
+    masked = safety.mask_targets(
+        safety.clip_to_limits(HOME, *safety.limits_with_margin(LOWER, UPPER, MARGIN)),
+        hold, safety.active_mask([7]), math.radians(10))
+    assert masked[3] == hold[3]
+
+
 def test_joint_jump():
     previous = [0.0] * 7
     assert not safety.joint_jumped([0.0] * 7, None, 0.5)

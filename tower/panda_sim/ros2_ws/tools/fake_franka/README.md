@@ -44,14 +44,17 @@ make test-driver [PATCHED=1]     # the driver alone
 make test-reflex [PATCHED=1]     # a reflex during teleop, with the fake GELLO
 make test-robot-mode [PATCHED=1] # make robot-enable / robot-disable
 make test-nudge [PATCHED=1]      # make robot-nudge, libfranka alone and via the driver
-make test-fake-robot [PATCHED=1] # the build, then the four tests
+make test-joint-mask [PATCHED=1] # make gello ROBOT=real JOINTS=7 RANGE=10
+make test-fake-robot [PATCHED=1] # the build, then the five tests
 ```
 
 With the original driver, `test-driver` is expected to fail (results
-below). With `PATCHED=1` all four pass.
+below). With `PATCHED=1` all five pass.
 
-`test-reflex` and `test-robot-mode` start the fake GELLO configured for the real robot
-(`robot:=real`, `config/panda_real.yaml`).
+`test-reflex`, `test-robot-mode`, `test-nudge` and `test-joint-mask` start the fake GELLO
+configured for the real robot (`robot:=real`, `config/panda_real.yaml`). Its
+swing (`fake_amplitude`) is 0.01 rad, inside the real 2 degree enable
+tolerance; 0.3 rad in `test-joint-mask`, past the 10 degree range.
 
 - **`test_driver`:** state gaps during the first enable; disabling while J1
   moves fast (how far and how long it takes to stop); whether the arm moves by
@@ -60,6 +63,9 @@ below). With `PATCHED=1` all four pass.
 - **`test_reflex`:** GELLO enable is refused while the driver is disabled. An
   injected reflex must disable GELLO within 0.5 s. Re-enabling the driver must
   not move the arm towards the GELLO.
+- **`test_joint_mask`:** with `joints:=7 range:=10`, GELLO enables with only
+  J7 matching; `posref` holds J1..J6 at the pose at enable and keeps J7
+  within 10 degrees of it (reaching the bound); the arm's J1..J6 don't move.
 - `PATCHED=1` uses the driver with `patches/panda_driver_safety.patch`. The
   patch fixes: braking with ruckig on disable instead of freezing the command;
   starting ruckig from rest after a reflex (no stale velocity); ruckig running

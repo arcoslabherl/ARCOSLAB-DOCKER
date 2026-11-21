@@ -44,6 +44,10 @@ ROS_DOMAIN_ID ?= 47
 ROBOT ?= sim
 # GRIPPER=off: the GELLO leaves the Panda's gripper alone (first real tests)
 GRIPPER ?= on
+# Joint mask (L4, first GELLO tests on the real Panda): JOINTS=7 or JOINTS=6,7
+# follow the GELLO within RANGE degrees of the pose at enable; the rest hold.
+JOINTS ?= all
+RANGE ?= 10
 
 # Arm limits of 'make sim-teleop' (rad/s, rad/s^2, rad/s^3). The defaults
 # match the real robot's driver, so the simulator shows the response it
@@ -90,7 +94,7 @@ define apply_patch
 	fi
 endef
 
-.PHONY: help help-all setup update test test-fake-robot .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode test-nudge real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable robot-nudge latency-record latency-replay latency-analyze stop
+.PHONY: help help-all setup update test test-fake-robot .pull .build .build-real run fix-owner debug .colcon_build sim sim-teleop test-all-joints test-gripper test-panda gello gello-fake gello-enable gello-disable gello-offsets test-gello test-sim test-unit fake-driver-build test-driver test-reflex test-robot-mode test-nudge test-joint-mask real-driver-build rt-check robot-echo robot-comm-test real-driver robot-enable robot-disable robot-nudge latency-record latency-replay latency-analyze stop
 
 # The everyday commands, by situation. Everything else: 'make help-all'.
 help:
@@ -126,7 +130,7 @@ help-all:
 	@echo "  make setup [REAL=1] .pull, .build (+ .build-real), run if stopped, .colcon_build"
 	@echo "  make update         .pull and .colcon_build (the container must be running)"
 	@echo "  make test [ONLY=rbc|teleop]  test-unit, then test-sim"
-	@echo "  make test-fake-robot [PATCHED=1]  fake-driver-build + the four tests (original driver: test-driver fails, known)"
+	@echo "  make test-fake-robot [PATCHED=1]  fake-driver-build + the five tests (original driver: test-driver fails, known)"
 	@echo ""
 	@echo "Available commands:"
 	@echo "  make .pull          Download simulator repositories"
@@ -141,7 +145,7 @@ help-all:
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
 	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
-	@echo "  make gello [ROBOT=real] [GRIPPER=off]  Start GELLO teleoperation (finds the GELLO; GELLO_PORT=... forces a port)"
+	@echo "  make gello [ROBOT=real] [GRIPPER=off] [JOINTS=7 RANGE=10]  Start GELLO teleoperation (finds the GELLO; GELLO_PORT=... forces a port)"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
 	@echo "  make gello-enable   Enable GELLO control"
 	@echo "  make gello-disable  Disable GELLO control"
@@ -155,6 +159,7 @@ help-all:
 	@echo "  make fake-driver-build  Build the real Panda driver on a fake libfranka"
 	@echo "  make test-driver [PATCHED=1]  Test the real driver on the fake libfranka"
 	@echo "  make test-reflex [PATCHED=1]  Test a reflex during GELLO teleop (fake robot)"
+	@echo "  make test-joint-mask [PATCHED=1]  Test the GELLO joint mask, JOINTS=7 (fake robot)"
 	@echo "  make test-robot-mode [PATCHED=1]  Test robot-enable/robot-disable (fake robot)"
 	@echo "  make test-nudge [PATCHED=1]  Test robot-nudge, both ways (fake robot)"
 	@echo "  make real-driver-build  Build the real driver (plain and patched), rt_check and nudge (REAL=1 container)"
@@ -195,7 +200,7 @@ test:
 # (known bugs, tools/fake_franka/README.md); PATCHED=1 should pass them all.
 test-fake-robot:
 	$(MAKE) fake-driver-build
-	@failed=; for t in test-driver test-reflex test-robot-mode test-nudge; do \
+	@failed=; for t in test-driver test-reflex test-robot-mode test-nudge test-joint-mask; do \
 		$(MAKE) $$t || failed="$$failed $$t"; \
 	done; \
 	if [ -n "$$failed" ]; then echo "test-fake-robot: FAILED:$$failed"; exit 1; fi; \
@@ -286,10 +291,10 @@ test-panda: test-all-joints test-gripper
 	@echo "Full Panda test SUCCEEDED"
 
 gello:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT_ARG) $(ROBOT) $(GRIPPER))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT_ARG) $(ROBOT) $(GRIPPER) $(JOINTS) $(RANGE))
 
 gello-fake:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT) $(GRIPPER))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT) $(GRIPPER) $(JOINTS) $(RANGE))
 
 gello-enable:
 	docker exec -it $(CONTAINER_NAME) bash -c \
@@ -353,6 +358,9 @@ test-reflex:
 
 test-robot-mode:
 	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_robot_mode.sh $(if $(PATCHED),--patched)
+
+test-joint-mask:
+	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_joint_mask.sh $(if $(PATCHED),--patched)
 
 test-nudge:
 	docker exec -it $(CONTAINER_NAME) bash $(FAKE_FRANKA)/test_nudge.sh $(if $(PATCHED),--patched)
