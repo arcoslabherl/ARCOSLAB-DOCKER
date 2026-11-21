@@ -1,12 +1,15 @@
 // Moves one joint of the Panda a few degrees from where it is, and back, with
 // libfranka alone (no driver, no ROS). The first, smallest motion test.
 //
-//   nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--yes]
+//   nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--no-limit] [--yes]
 //
 // Same robot settings as the lab driver (collision thresholds, joint
 // impedance, joint position control with libfranka's rate limiter), so it
 // shows how the arm behaves under the driver. --stiff: the joint impedance of
-// libfranka's examples instead (3000..2000, the driver's is 500..200). Out in 3 s, 1 s still, back in
+// libfranka's examples instead (3000..2000, the driver's is 500..200).
+// --no-limit: libfranka's rate limiter off, so a command that jumps stops the
+// robot at once (reflex) instead of being smoothed; a generator out of step
+// with the robot then can't oscillate as on 2026-11-17. Out in 3 s, 1 s still, back in
 // 3 s, 0.5 s still before finishing. Each way
 // is a minimum-jerk curve (zero velocity and acceleration at both ends). At
 // most 10 degrees, and only inside the joint limits minus 0.1 rad.
@@ -83,7 +86,8 @@ struct Sample {
   std::array<double, 7> q_all, q_d_all;  // every joint, to see the ones that shouldn't move
 };
 
-void write_log(const std::vector<Sample>& log, int joint, double degrees, bool stiff) {
+void write_log(const std::vector<Sample>& log, int joint, double degrees, bool stiff,
+               bool no_limit) {
   const char* env = std::getenv("NUDGE_LOG_DIR");
   const std::string dir = env != nullptr ? env : "/ros2_ws/tools/data";
   char name[64];
@@ -91,7 +95,8 @@ void write_log(const std::vector<Sample>& log, int joint, double degrees, bool s
   std::strftime(name, sizeof(name), "%Y%m%d_%H%M%S", std::localtime(&now));
   const std::string path = dir + "/nudge_J" + std::to_string(joint) + "_" +
                            std::to_string(static_cast<int>(degrees)) + "deg" +
-                           (stiff ? "_stiff_" : "_") + name + ".csv";
+                           (stiff ? "_stiff" : "") + (no_limit ? "_nolimit" : "") + "_" + name +
+                           ".csv";
   std::error_code error;
   std::filesystem::create_directories(dir, error);
   FILE* file = std::fopen(path.c_str(), "w");
@@ -116,16 +121,17 @@ void write_log(const std::vector<Sample>& log, int joint, double degrees, bool s
 }
 
 int usage() {
-  std::cerr << "Usage: nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--yes]\n"
+  std::cerr << "Usage: nudge <robot ip> <joint 1-7> <degrees> [--stiff] [--no-limit] [--yes]\n"
             << "  Moves the joint by <degrees> (at most " << kMaxDegrees
-            << ") and back. --stiff: libfranka examples' joint impedance.\n";
+            << ") and back. --stiff: libfranka examples' joint impedance.\n"
+            << "  --no-limit: libfranka's rate limiter off (a jump stops the robot).\n";
   return 2;
 }
 
 }  // namespace
 
 int main(int argc, char** argv) {
-  if (argc < 4 || argc > 6) return usage();
+  if (argc < 4 || argc > 7) return usage();
   const std::string ip = argv[1];
   int joint = 0;
   double degrees = 0.0;
@@ -135,13 +141,15 @@ int main(int argc, char** argv) {
   } catch (const std::exception&) {
     return usage();
   }
-  bool assume_yes = false, stiff = false;
+  bool assume_yes = false, stiff = false, no_limit = false;
   for (int i = 4; i < argc; i++) {
     const std::string flag = argv[i];
     if (flag == "--yes") {
       assume_yes = true;
     } else if (flag == "--stiff") {
       stiff = true;
+    } else if (flag == "--no-limit") {
+      no_limit = true;
     } else {
       return usage();
     }
@@ -186,6 +194,9 @@ int main(int argc, char** argv) {
                 "E-stop in hand.\n",
                 1.875 * std::abs(delta) / kMoveTime,
                 stiff ? "libfranka examples' (stiff)" : "the driver's");
+    std::printf("Rate limiter: %s\n",
+                no_limit ? "OFF (a command that jumps stops the robot: reflex, white button)"
+                         : "on, as the driver");
     if (!assume_yes) {
       std::cout << "Type 'yes' to start: " << std::flush;
       std::string answer;
@@ -252,9 +263,9 @@ int main(int argc, char** argv) {
           if (time >= total) return franka::MotionFinished(franka::JointPositions(base));
           return command;
         },
-        franka::ControllerMode::kJointImpedance, true, 1000.0);
+        franka::ControllerMode::kJointImpedance, !no_limit, 1000.0);
 
-    write_log(log, joint, degrees, stiff);
+    write_log(log, joint, degrees, stiff, no_limit);
     // How far the joints that weren't commanded moved, measured, from where
     // they were before the motion (the soft joint impedance and an
     // unmodelled load can make them give a little)
@@ -286,11 +297,15 @@ int main(int argc, char** argv) {
     if (!log.empty()) {
       std::printf("Stopped %.3f s into the motion (of %.1f s).\n", log.back().t,
                   2.0 * kMoveTime + kHoldTime + kSettleTime);
-      write_log(log, joint, degrees, stiff);
+      write_log(log, joint, degrees, stiff, no_limit);
     }
     std::cout << "libfranka error: " << ex.what() << "\n"
               << "The robot stopped (reflex or no connection). Check the arm and the "
                  "area. The next run clears the error first, as the driver does.\n";
+    if (no_limit) {
+      std::cout << "Rate limiter was off: a discontinuity error here means a command jumped "
+                   "(ours or after lost packets). Keep the CSV and find why before going on.\n";
+    }
     return 1;
   }
 }

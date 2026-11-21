@@ -56,6 +56,16 @@ for ex in acceleration velocity; do
     check "  no limit violations" "$(grep -c VIOLATION <<< "$output")" "^0$"
     check "  rate limiter never needed" "$output" "rate limiter changed 0 commands"
 done
+# --no-limit (NOLIMIT=1): no rate limiter, and the fake stops at the first
+# violation as the robot would. The fixed nudge must not jump, even with
+# lost packets; the 1 ms-per-call one stopped here at 0.3 s.
+for ex in acceleration velocity; do
+    output=$(FAKE_FRANKA_STRICT=1 FAKE_FRANKA_EXTRAPOLATE=$ex FAKE_FRANKA_LOSE_EVERY=23 \
+        $NUDGE fake 7 5 --no-limit --yes 2>&1)
+    check "J7 5 deg, no rate limiter, lost packets ($ex)" "$output" "Back at the start within 0.00 deg"
+    check "  limiter off" "$output" "limit_rate 0"
+    check "  no limit violations" "$(grep -c VIOLATION <<< "$output")" "^0$"
+done
 
 echo "Through the driver (with lost packets)"
 export FAKE_FRANKA_LOSE_EVERY=97

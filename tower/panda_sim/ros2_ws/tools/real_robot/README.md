@@ -79,6 +79,8 @@ end it prints how close the arm came back, the largest gap between the
 measured and commanded position, and the communication quality
 (`control_command_success_rate`, lost packets), which tells whether this
 computer is good enough. Start with the wrist (J7), a few degrees.
+`NOLIMIT=1` turns libfranka's rate limiter off: a command that jumps stops the
+robot (reflex) instead of being smoothed. Use it for each joint's first run.
 
 `make robot-comm-test` (optional, a bigger move) asks for confirmation first. libfranka 0.8.0's
 example **moves the arm** to the joint pose (0, -45, 0, -135, 0, 90, 45)
