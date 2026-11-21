@@ -9,8 +9,11 @@ DRIVER = "/asimilar/panda_arm"
 
 # Robot-independent safety settings: the real robot must get the same ones
 SAFETY = ["panda_joint_lower", "panda_joint_upper", "joint_limit_margin",
-          "enable_tolerance", "max_sample_change", "data_timeout",
+          "max_sample_change", "data_timeout",
           "status_timeout", "gripper_enable_tolerance"]
+
+# Safety settings the real robot may only make stricter (smaller)
+STRICTER_ONLY = ["enable_tolerance"]
 
 
 def test_overrides_only_existing_parameters():
@@ -21,6 +24,11 @@ def test_overrides_only_existing_parameters():
 @pytest.mark.parametrize("name", SAFETY)
 def test_safety_settings_are_not_overridden(name):
     assert name not in REAL_OVERRIDES
+
+
+@pytest.mark.parametrize("name", STRICTER_ONLY)
+def test_safety_settings_only_stricter(name):
+    assert 0.0 < REAL_CALIBRATOR[name] <= CALIBRATOR[name]
 
 
 def test_nothing_points_at_the_simulator():

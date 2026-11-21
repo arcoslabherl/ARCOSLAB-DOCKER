@@ -4,11 +4,13 @@ set -e
 # ARCoS-Lab - GELLO teleoperation
 # ROS 2 Humble
 #
-# Usage: start_gello.sh [dynamixel|fake] [serial port] [sim|real]
+# Usage: start_gello.sh [dynamixel|fake] [serial port] [sim|real] [on|off]
+#   on|off: the gripper (off: the calibrator leaves it alone)
 
 BACKEND="${1:-dynamixel}"
 PORT="${2:-auto}"   # auto: gello_find_port looks for the GELLO
 ROBOT="${3:-sim}"
+GRIPPER="${4:-on}"
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -35,9 +37,10 @@ if [[ -n "${SESSION_ID:-}" ]]; then
     ps -o pgid= -p $$ | tr -d ' ' > "/tmp/ros2_session.${SESSION_ID}"
 fi
 
-echo "Starting GELLO (${BACKEND} backend, ${ROBOT} Panda)..."
+echo "Starting GELLO (${BACKEND} backend, ${ROBOT} Panda, gripper ${GRIPPER})..."
 
 ros2 launch gello_teleop gello.launch.py \
     backend:="$BACKEND" \
     port:="$PORT" \
-    robot:="$ROBOT"
+    robot:="$ROBOT" \
+    gripper:="$GRIPPER"

@@ -24,3 +24,8 @@ gello_calibrator:
     # libfranka's speed is per finger or for the width, and 0.05 is within
     # the limit either way. Raise it at the lab if 'move' at 0.1 works.
     gripper_speed: 0.05         # m/s
+
+    # Stricter than the sim's 0.1 rad (5.7 deg): enabling with a gap makes
+    # the arm travel it at once, with nobody moving the GELLO. Safety
+    # settings may only be stricter here (test_real_config.py).
+    enable_tolerance: 0.035     # rad, 2 deg

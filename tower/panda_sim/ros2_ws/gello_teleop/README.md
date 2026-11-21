@@ -93,12 +93,15 @@ To stop, press Ctrl+C in the GELLO and simulator terminals.
 With the lab driver running (`make real-driver`, see
 `tools/real_robot/README.md`) instead of the simulator:
 
-    make gello ROBOT=real
+    make gello ROBOT=real [GRIPPER=off]
 
 `config/panda_real.yaml` then overrides the robot's topics
-(`/asimilar/panda_arm/...`), turns grasp mode on and lowers the
-gripper speed to 0.05 m/s. The GELLO's calibration and all the
-safety settings stay those of `config/gello_panda.yaml`.
+(`/asimilar/panda_arm/...`), turns grasp mode on, lowers the
+gripper speed to 0.05 m/s and tightens the enable tolerance to
+0.035 rad (2 degrees). The GELLO's calibration and the other safety
+settings stay those of `config/gello_panda.yaml`; the real robot may
+only make a safety setting stricter. `GRIPPER=off` (launch argument
+`gripper:=off`) leaves the gripper alone, for the first tests.
 
 ## Gripper
 
@@ -133,7 +136,8 @@ Control disables itself and stops the arm if:
 
 Enabling is refused if the robot isn't enabled, if another node
 publishes `posref`, if any joint differs from the Panda by more
-than 0.1 rad (5.7 degrees), or if the trigger doesn't match the
+than `enable_tolerance` (0.1 rad, 5.7 degrees; 2 degrees on the real
+Panda), or if the trigger doesn't match the
 gripper.
 
 ## Topics

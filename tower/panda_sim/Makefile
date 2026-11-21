@@ -34,9 +34,16 @@ SERIAL_GROUPS = $(foreach gid,$(sort $(shell getent group dialout uucp | cut -d:
 # (build/, install/, log/, __pycache__, tools/data/) are the user's, not root's.
 HOST_USER = --user $(shell id -u):$(shell id -g) -e HOME=/tmp
 
+# ROS 2 domain of the container. Not the default 0, so this setup doesn't
+# see (or command) other ROS computers on the lab's network, nor they it.
+# Takes effect on the next 'make run'.
+ROS_DOMAIN_ID ?= 47
+
 # Which Panda 'make gello' commands: sim, or real (the lab driver,
 # 'make real-driver'; config/panda_real.yaml on top of gello_panda.yaml)
 ROBOT ?= sim
+# GRIPPER=off: the GELLO leaves the Panda's gripper alone (first real tests)
+GRIPPER ?= on
 
 # Arm limits of 'make sim-teleop' (rad/s, rad/s^2, rad/s^3). The defaults
 # match the real robot's driver, so the simulator shows the response it
@@ -134,7 +141,7 @@ help-all:
 	@echo "  make test-gripper     Test Panda gripper"
 	@echo "  make test-panda       Test all joints and gripper"
 	@echo "  make sim-teleop     Start the simulator for GELLO control (no RBC)"
-	@echo "  make gello [ROBOT=real]  Start GELLO teleoperation (finds the GELLO; GELLO_PORT=... forces a port)"
+	@echo "  make gello [ROBOT=real] [GRIPPER=off]  Start GELLO teleoperation (finds the GELLO; GELLO_PORT=... forces a port)"
 	@echo "  make gello-fake     Start GELLO with a fake device (no hardware)"
 	@echo "  make gello-enable   Enable GELLO control"
 	@echo "  make gello-disable  Disable GELLO control"
@@ -236,6 +243,7 @@ run:
 	$(HOST_USER) \
 	-e DISPLAY=$(DISPLAY) \
 	-e QT_X11_NO_MITSHM=1 \
+	-e ROS_DOMAIN_ID=$(ROS_DOMAIN_ID) \
 	-v /tmp/.X11-unix:/tmp/.X11-unix \
 	-v $(ROS_WS):/ros2_ws:rw \
 	$(SERIAL_DEVICES) \
@@ -278,10 +286,10 @@ test-panda: test-all-joints test-gripper
 	@echo "Full Panda test SUCCEEDED"
 
 gello:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT_ARG) $(ROBOT))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh dynamixel $(GELLO_PORT_ARG) $(ROBOT) $(GRIPPER))
 
 gello-fake:
-	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT))
+	$(call exec_session,/ros2_ws/scripts/start_gello.sh fake /dev/null $(ROBOT) $(GRIPPER))
 
 gello-enable:
 	docker exec -it $(CONTAINER_NAME) bash -c \

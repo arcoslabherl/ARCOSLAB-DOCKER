@@ -23,7 +23,13 @@ POSE="0.0 1.57 0.71"       # J5..J7 of the poses below (the sim home)
 # Each in its own process group, so cleanup stops the whole tree
 setsid "$TOOLS/fake_franka/run_driver.sh" "$@" > "$OUT/driver.out" 2>&1 &
 DRIVER=$!
+# The fake GELLO oscillates 0.1 rad by default, more than the real robot's
+# 2 deg enable tolerance: here it stays within 0.01 rad of the arm's pose.
+FAKE_GELLO_CONFIG=/tmp/gello_fake_test.yaml
+sed 's/^\(\s*fake_amplitude:\).*/\1 0.01/' \
+    /ros2_ws/gello_teleop/config/gello_panda.yaml > "$FAKE_GELLO_CONFIG"
 setsid ros2 launch gello_teleop gello.launch.py backend:=fake robot:=real \
+    config:="$FAKE_GELLO_CONFIG" \
     > "$OUT/gello.out" 2>&1 &
 GELLO=$!
 MOVER=""

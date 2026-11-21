@@ -6,6 +6,8 @@ Arguments:
   robot:=sim|real           which Panda to command (default sim). real adds
                             config/panda_real.yaml on top of the config.
   config:=<yaml>            parameter file (default config/gello_panda.yaml)
+  gripper:=on|off           off: the calibrator leaves the gripper alone
+                            (default on)
 """
 
 import os
@@ -25,14 +27,19 @@ def nodes(context):
     port = LaunchConfiguration("port").perform(context)
     robot = LaunchConfiguration("robot").perform(context)
     config = LaunchConfiguration("config").perform(context)
+    gripper = LaunchConfiguration("gripper").perform(context)
 
     if robot not in ("sim", "real"):
         raise RuntimeError(f"robot:={robot}: use robot:=sim or robot:=real")
+    if gripper not in ("on", "off"):
+        raise RuntimeError(f"gripper:={gripper}: use gripper:=on or gripper:=off")
 
     # Later files override earlier ones
     calibrator_params = [config]
     if robot == "real":
         calibrator_params.append(os.path.join(CONFIG_DIR, "panda_real.yaml"))
+    if gripper == "off":
+        calibrator_params.append({"gripper_service": ""})
 
     return [
         Node(
@@ -57,6 +64,7 @@ def generate_launch_description():
         DeclareLaunchArgument("backend", default_value="dynamixel"),
         DeclareLaunchArgument("port", default_value="/dev/ttyUSB0"),
         DeclareLaunchArgument("robot", default_value="sim"),
+        DeclareLaunchArgument("gripper", default_value="on"),
         DeclareLaunchArgument(
             "config", default_value=os.path.join(CONFIG_DIR, "gello_panda.yaml")),
         OpaqueFunction(function=nodes),
