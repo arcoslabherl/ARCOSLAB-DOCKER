@@ -18,7 +18,7 @@ from dynamixel_sdk import COMM_SUCCESS, PacketHandler, PortHandler
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 
-from television_teleop.neck import Axis, Follower, Settle, deg, head_yaw_pitch
+from television_teleop.neck import Axis, Follower, Settle, deg, head_yaw_pitch, wrap_deg
 
 # X series control table (XL330)
 ADDR_OPERATING_MODE = 11
@@ -99,7 +99,11 @@ class NeckNode(Node):
                 float(p(f'{name}_min_deg', 0.0).value),
                 float(p(f'{name}_max_deg', 0.0).value),
                 int(p(f'{name}_sign', 1).value), range_deg)
-        self.follower = Follower(self.axes['yaw'], self.axes['pitch'], self.max_speed, self.rate_hz)
+        # Absolute pitch (from gravity) unless pitch_level_deg is negative
+        level = float(p('pitch_level_deg', -1.0).value)
+        self.pitch_level = level if level >= 0.0 else None
+        self.follower = Follower(self.axes['yaw'], self.axes['pitch'], self.max_speed, self.rate_hz,
+                                 self.pitch_level)
 
         self.check_port()
         self.bus = Bus(self.port_path, self.baud)
@@ -121,7 +125,9 @@ class NeckNode(Node):
             ('LIVE: torque on, the servos follow the head' if self.live else
              'DRY RUN: nothing is written to the servos') +
             f' (range {range_deg:g} deg, {self.max_speed:g} deg/s). '
-            'The reference: the head after 1 s still, looking forward.')
+            'Yaw reference: the head after 1 s still, looking forward. Pitch: ' +
+            (f'absolute, head horizontal = camera at {self.pitch_level:g} deg.'
+             if self.pitch_level is not None else 'relative to the reference.'))
 
         self.head = None          # (yaw, pitch, monotonic time)
         self.settle = Settle()
@@ -215,7 +221,7 @@ class NeckNode(Node):
                     self.get_logger().info('Head pose arriving: hold your head still, looking forward...')
                     self.last_log = now
                 return
-            self.follower.update(yaw, pitch)
+            self.follower.set_reference(yaw, pitch)
             self.get_logger().info('Reference set: following the head.')
         if now - stamp > self.head_timeout:
             raise Stop(f'no head pose for {self.head_timeout:g} s')
@@ -244,7 +250,8 @@ class NeckNode(Node):
         if now - self.last_log > 0.5:
             self.last_log = now
             ref = self.follower.reference
-            print(f'head yaw {yaw - ref[0]:+6.1f} pitch {pitch - ref[1]:+6.1f} deg | ' +
+            head_pitch = pitch if self.pitch_level is not None else pitch - ref[1]
+            print(f'head yaw {wrap_deg(yaw - ref[0]):+6.1f} pitch {head_pitch:+6.1f} deg | ' +
                   '  '.join(f'{a.name} goal {deg(goal[a.name] - a.neutral):+5.1f} '
                             f'now {deg(self.present[a.name] - a.neutral):+5.1f}'
                             for a in self.axes.values()) +

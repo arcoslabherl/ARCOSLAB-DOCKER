@@ -24,3 +24,7 @@ television_neck:
     pitch_min_deg: 252.0     # up: mechanical stop at 248
     pitch_max_deg: 312.0     # down: the camera can go much lower, keep it here
     pitch_sign: 1
+    # Absolute pitch: the angle with the camera level (measured "forward and
+    # level", 2026-11-23). Head horizontal -> this; head 10 deg down -> 10
+    # more. Negative: pitch relative to the reference, like yaw.
+    pitch_level_deg: 268.0

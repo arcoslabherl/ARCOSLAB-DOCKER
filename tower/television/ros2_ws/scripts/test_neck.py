@@ -30,11 +30,17 @@ def _neutral():
     import yaml
     with open(CONFIG.replace('/install/television_teleop/share/television_teleop/', '/television_teleop/')) as f:
         p = yaml.safe_load(f)['television_neck']['ros__parameters']
-    return {PITCH_ID: round(p['pitch_neutral_deg'] * TICKS_PER_DEG),
-            YAW_ID: round(p['yaw_neutral_deg'] * TICKS_PER_DEG)}
+    return ({PITCH_ID: round(p['pitch_neutral_deg'] * TICKS_PER_DEG),
+             YAW_ID: round(p['yaw_neutral_deg'] * TICKS_PER_DEG)},
+            p['pitch_level_deg'] - p['pitch_neutral_deg'])
 
 
-NEUTRAL = _neutral()   # from neck.yaml
+NEUTRAL, LEVEL_FROM_NEUTRAL = _neutral()   # from neck.yaml
+
+
+def expected_pitch(head_pitch):
+    """Pitch servo, deg from neutral, for an absolute head pitch (clamped)."""
+    return max(-3.0, min(3.0, LEVEL_FROM_NEUTRAL + head_pitch))
 RANGE_TICKS = round(3.0 * TICKS_PER_DEG)
 MAX_STEP = int(4.0 * TICKS_PER_DEG / 10.0)    # 4 deg/s at 10 Hz
 ADDR_TORQUE, ADDR_GOAL = 64, 116
@@ -150,7 +156,7 @@ def test_live(head):
         steps = [abs(b - a) for a, b in zip(g, g[1:])]
         check(max(steps, default=0) <= MAX_STEP, f'{name}: at most {MAX_STEP} ticks per goal (4 deg/s)')
         check(abs(final[i] - (NEUTRAL[i] + RANGE_TICKS)) <= 2,
-              f'{name}: head left/down -> +3 deg ({(final[i] - NEUTRAL[i]) / TICKS_PER_DEG:+.1f})')
+              f'{name}: head left / 17 deg down -> +3 deg ({(final[i] - NEUTRAL[i]) / TICKS_PER_DEG:+.1f})')
         check(torque_writes(servos, i)[-1:] == [0], f'{name}: torque off at the end')
     check(code not in (0, None) and 'no head pose' in out, 'stops when the head pose stops')
     check(exit_after < 4.0, f'stops within 4 s ({exit_after:.1f} s; timeout 2 s)')
@@ -167,16 +173,18 @@ def test_reference_waits_for_still_head(head):
     time.sleep(0.2)
     head.angles = (0.0, 0.0)
     time.sleep(2.5)
-    head.angles = (1.0, 1.0)            # a small move: the camera follows 1 deg
-    time.sleep(2.0)
+    head.angles = (1.0, 8.0)            # yaw: 1 deg from the still pose; pitch: absolute
+    time.sleep(3.5)
     moved = {i: (servos.position(i) - NEUTRAL[i]) / TICKS_PER_DEG for i in NEUTRAL}
     head.angles = None
     code, out = finish(proc, 10)
     servos.close()
     check('Reference set' in out, 'says when the reference is set')
-    for i, name in ((YAW_ID, 'yaw (ID 2)'), (PITCH_ID, 'pitch (ID 1)')):
-        check(abs(moved[i] - 1.0) < 0.2, f'{name}: +1 deg from the still pose ({moved[i]:+.1f}), '
-              'not saturated by the wild one')
+    check(abs(moved[YAW_ID] - 1.0) < 0.2, f'yaw (ID 2): +1 deg from the still pose ({moved[YAW_ID]:+.1f}), '
+          'not saturated by the wild one')
+    want = expected_pitch(8.0)
+    check(abs(moved[PITCH_ID] - want) < 0.2,
+          f'pitch (ID 1): absolute, head 8 deg down -> {want:+.1f} from neutral ({moved[PITCH_ID]:+.1f})')
 
 
 def test_pushed(head):

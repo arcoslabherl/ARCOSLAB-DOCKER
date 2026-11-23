@@ -1,9 +1,11 @@
 """Active neck: the camera mount's 2 servos follow the operator's head.
 
-Relative mapping: the head's pose at the first message is the reference,
-the camera starts at its neutral pose (checked), and each servo moves by
-the head's change in yaw or pitch, clamped to a range around neutral and
-to the mount's safe ends, at a limited speed.
+Yaw is relative: the head's yaw when the reference is set maps to the
+camera's neutral (the headset's yaw has no fixed zero). Pitch is absolute
+when a level is given: the headset measures it from gravity, so head
+horizontal = camera level, whatever the head did at the reference.
+Goals are clamped to a range around neutral and to the mount's safe ends,
+at a limited speed. The camera starts at its neutral pose (checked).
 
 No ROS or serial here, so it can be unit tested.
 """
@@ -102,9 +104,14 @@ class Follower:
     """The goals of both axes from the head's yaw and pitch, at a limited
     speed. Call update() at a fixed rate with the latest head angles."""
 
-    def __init__(self, yaw_axis, pitch_axis, max_speed_deg_s, rate_hz):
+    def __init__(self, yaw_axis, pitch_axis, max_speed_deg_s, rate_hz, pitch_level_deg=None):
+        """pitch_level_deg: the pitch servo's angle with the camera level
+        (absolute pitch); None: pitch relative to the reference too."""
         self.yaw = yaw_axis
         self.pitch = pitch_axis
+        # Absolute pitch as a change from neutral: goal = level + sign * head pitch
+        self.pitch_offset = None if pitch_level_deg is None else \
+            pitch_axis.sign * (pitch_level_deg - deg(pitch_axis.neutral))
         # Ticks per update, at least 1 so it can move at all
         self.max_step = max(1, int(max_speed_deg_s * TICKS_PER_DEG / rate_hz))
         self.reference = None
@@ -115,12 +122,19 @@ class Follower:
         self.goal = dict(present)
         self.reference = None
 
+    def set_reference(self, head_yaw, head_pitch):
+        """The head pose that maps to the camera's neutral yaw."""
+        self.reference = (head_yaw, head_pitch)
+
     def update(self, head_yaw, head_pitch):
         """New goals (ticks by axis name). The first call sets the reference."""
         if self.reference is None:
-            self.reference = (head_yaw, head_pitch)
+            self.set_reference(head_yaw, head_pitch)
         d_yaw = wrap_deg(head_yaw - self.reference[0])
-        d_pitch = head_pitch - self.reference[1]
+        if self.pitch_offset is None:
+            d_pitch = head_pitch - self.reference[1]
+        else:
+            d_pitch = head_pitch + self.pitch_offset
         for axis, change in ((self.yaw, d_yaw), (self.pitch, d_pitch)):
             self.goal[axis.name] = step_toward(self.goal[axis.name], axis.target(change), self.max_step)
         return dict(self.goal)

@@ -115,3 +115,29 @@ def test_settle_rejects_slow_or_moving():
     for k in range(80):
         wrapping.add(k / 60.0, 179.5 if k % 2 else -179.5, 0.0)
     assert wrapping.still()              # 1 deg apart across +-180
+
+
+def test_follower_absolute_pitch():
+    yaw, pitch = make_axes(30.0)          # wide range: no clamping here
+    f = Follower(yaw, pitch, 1000.0, 10.0, pitch_level_deg=268.0)
+    f.start({'yaw': yaw.neutral, 'pitch': pitch.neutral})
+    # The reference is taken looking 14 deg down: pitch ignores it
+    f.update(10.0, 14.0)
+    g = f.update(10.0, 0.0)               # head horizontal -> camera level
+    assert g['pitch'] == ticks(268.0)
+    assert g['yaw'] == yaw.neutral        # yaw stays relative
+    g = f.update(10.0, 10.0)              # 10 deg down -> 10 deg down
+    assert g['pitch'] == ticks(278.0)
+    # Narrow range around neutral 268: clamped
+    yaw, pitch = make_axes(3.0)
+    f = Follower(yaw, pitch, 1000.0, 10.0, pitch_level_deg=268.0)
+    f.start({'yaw': yaw.neutral, 'pitch': pitch.neutral})
+    assert f.update(0.0, -20.0)['pitch'] == pitch.neutral - ticks(3.0)
+
+
+def test_follower_relative_pitch_without_level():
+    yaw, pitch = make_axes(30.0)
+    f = Follower(yaw, pitch, 1000.0, 10.0)
+    f.start({'yaw': yaw.neutral, 'pitch': pitch.neutral})
+    f.update(0.0, 14.0)
+    assert f.update(0.0, 14.0)['pitch'] == pitch.neutral

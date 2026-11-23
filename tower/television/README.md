@@ -77,7 +77,8 @@ U2D2. With `make stream` running and the headset in VR:
    neutral in `ros2_ws/television_teleop/config/neck.yaml`). Ctrl+C.
 2. `make neck`: dry run, prints where it would move the servos. Nothing moves.
    With the headset on, look forward and keep still until it says
-   "Reference set".
+   "Reference set": that is the camera's neutral left/right. Up/down
+   follows the head's tilt from horizontal (head level = camera level).
 3. `make neck LIVE=1`: the servos follow the head, at most 3° from
    neutral (`RANGE=...`), 4°/s. Ctrl+C turns the torque off.
 
