@@ -52,7 +52,7 @@ help:
 	@echo "  make run            Start the container (plug the ZED in first)"
 	@echo "  make stream         ZED video to the headset"
 	@echo "  make stream-fake    Test pattern instead of the ZED (no camera, no GPU)"
-	@echo "  make head-echo      Print the headset's head pose (ROS topic)"
+	@echo "  make head-echo      Head pose in degrees and Hz while a headset is connected"
 	@echo "  make stop           Stop the container"
 	@echo ""
 	@echo "Setup and tests:"
@@ -165,7 +165,7 @@ stream-fake:
 
 head-echo:
 	docker exec -it $(CONTAINER_NAME) bash -c \
-		"$(ROS_SOURCE) && ros2 topic echo /television/head_pose"
+		"$(ROS_SOURCE) && python3 /ros2_ws/scripts/head_echo.py"
 
 test-unit:
 	docker exec -it -e PYTHONDONTWRITEBYTECODE=1 $(CONTAINER_NAME) bash -c \
