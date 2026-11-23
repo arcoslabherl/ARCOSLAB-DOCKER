@@ -48,6 +48,12 @@ RUN python3 -m pip install --no-cache-dir \
     scipy==1.15.3 && \
     chmod -R a+rX /usr/local/lib/python3.10/dist-packages
 
+# The camera's 2 Dynamixel servos (active neck), same SDK as the GELLO's
+RUN python3 -m pip install --no-cache-dir \
+    pyserial==3.5 \
+    dynamixel-sdk==3.7.31 && \
+    chmod -R a+rX /usr/local/lib/python3.10/dist-packages
+
 # ROS 2 environment
 COPY ./ros_entrypoint.sh /sbin/ros_entrypoint.sh
 

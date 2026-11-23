@@ -31,6 +31,14 @@ ZED_PLUGGED = $(shell lsusb -d 2b03: 2>/dev/null)
 # The container runs as the host user: the video group opens /dev/video*
 VIDEO_GROUPS = $(foreach gid,$(sort $(shell getent group video | cut -d: -f3) \
 	$(shell stat -Lc %g /dev/video* 2>/dev/null)),--group-add $(gid))
+# The camera mount's servos: the host's /dev at /hostdev, read-only, so
+# a U2D2 plugged in later shows up; the cgroup rule opens only USB-serial
+# adapters (major 188, ttyUSB*). Their group: dialout (Ubuntu), uucp (Arch).
+SERIAL_DEVICES = -v /dev:/hostdev:ro --device-cgroup-rule='c 188:* rmw'
+SERIAL_GROUPS = $(foreach gid,$(sort $(shell getent group dialout uucp | cut -d: -f3) \
+	$(shell stat -Lc %g /dev/ttyUSB* 2>/dev/null)),--group-add $(gid))
+# The mount's U2D2 (not the GELLO's, FTBEO7H2)
+NECK_PORT ?= /dev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTBEO5IA-if00-port0
 # The zed group (in the image) reads the SDK in /usr/local/zed
 HOST_USER = --user $(shell id -u):$(shell id -g) -e HOME=/tmp --group-add zed
 
@@ -45,7 +53,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo test-unit test-stream stop
+.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo neck-read test-unit test-stream stop
 
 help:
 	@echo "Video to the headset (README.md):"
@@ -53,6 +61,7 @@ help:
 	@echo "  make stream         ZED video to the headset"
 	@echo "  make stream-fake    Test pattern instead of the ZED (no camera, no GPU)"
 	@echo "  make head-echo      Head pose in degrees and Hz while a headset is connected"
+	@echo "  make neck-read      Read the camera mount's servos (read only, nothing moves)"
 	@echo "  make stop           Stop the container"
 	@echo ""
 	@echo "Setup and tests:"
@@ -110,6 +119,8 @@ run:
 	$(GPU) \
 	$(ZED_DEVICES) \
 	$(VIDEO_GROUPS) \
+	$(SERIAL_DEVICES) \
+	$(SERIAL_GROUPS) \
 	-v $(ROS_WS):/ros2_ws:rw \
 	-v $(CERTS):/television/certs:rw \
 	-v $(ZED_SETTINGS):/usr/local/zed/settings:rw \
@@ -166,6 +177,9 @@ stream-fake:
 head-echo:
 	docker exec -it $(CONTAINER_NAME) bash -c \
 		"$(ROS_SOURCE) && python3 /ros2_ws/scripts/head_echo.py"
+
+neck-read:
+	docker exec -it $(CONTAINER_NAME) python3 /ros2_ws/scripts/neck_read.py $(NECK_PORT)
 
 test-unit:
 	docker exec -it -e PYTHONDONTWRITEBYTECODE=1 $(CONTAINER_NAME) bash -c \
