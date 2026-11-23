@@ -53,7 +53,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo neck-read neck test-neck test-unit test-stream stop
+.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo neck-read neck-off neck test-neck test-unit test-stream stop
 
 help:
 	@echo "Video to the headset (README.md):"
@@ -63,6 +63,7 @@ help:
 	@echo "  make head-echo      Head pose in degrees and Hz while a headset is connected"
 	@echo "  make neck-read      Read the camera mount's servos (read only, nothing moves)"
 	@echo "  make neck [LIVE=1] [RANGE=3] [P_GAIN=800]  The mount follows the head (dry run unless LIVE=1)"
+	@echo "  make neck-off       Turn the mount's torque off (if 'make neck' could not)"
 	@echo "  make stop           Stop the container"
 	@echo ""
 	@echo "Setup and tests:"
@@ -182,6 +183,9 @@ head-echo:
 
 neck-read:
 	docker exec -it $(CONTAINER_NAME) python3 /ros2_ws/scripts/neck_read.py $(NECK_PORT)
+
+neck-off:
+	docker exec -it $(CONTAINER_NAME) python3 /ros2_ws/scripts/neck_off.py $(NECK_PORT)
 
 # The mount follows the head. Dry run unless LIVE=1. RANGE: deg from neutral.
 # P_GAIN, I_GAIN: the servos' position gains for this run (RAM only).

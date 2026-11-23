@@ -22,8 +22,10 @@ _crc = Protocol2PacketHandler().updateCRC
 
 class FakeServos:
 
-    def __init__(self, positions, link='/tmp/fake_u2d2'):
-        """positions: {id: ticks}. The port is at 'link'."""
+    def __init__(self, positions, link='/tmp/fake_u2d2', latency=0.0):
+        """positions: {id: ticks}. The port is at 'link'. latency: seconds
+        before each answer (a real bus at 57600 takes a few ms)."""
+        self.latency = latency
         self.master, slave = os.openpty()
         tty.setraw(slave)
         self.slave = slave
@@ -73,6 +75,8 @@ class FakeServos:
             struct.pack_into('<i', m, 132, int(round(self.pos[i])))
 
     def _reply(self, i, params=b''):
+        if self.latency:
+            time.sleep(self.latency)
         body = bytes([0xFF, 0xFF, 0xFD, 0x00, i]) + struct.pack('<H', len(params) + 4) + bytes([0x55, 0]) + params
         os.write(self.master, body + struct.pack('<H', _crc(0, body, len(body))))
 

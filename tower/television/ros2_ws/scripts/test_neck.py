@@ -8,6 +8,7 @@ Own ROS domain, so a running 'make stream' is not disturbed.
 """
 
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -83,7 +84,7 @@ def start_node(live, *extra):
         ['ros2', 'run', 'television_teleop', 'television_neck', '--ros-args',
          '--params-file', CONFIG, '-p', f'port:={PORT}', '-p', f'live:={str(live).lower()}'] +
         [a for e in extra for a in ('-p', e)],
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, start_new_session=True)
 
 
 def finish(proc, timeout):
@@ -197,6 +198,27 @@ def test_reference_waits_for_still_head(head):
           f'pitch (ID 1, {mode}): head {pitch_move:g} deg down -> {want:+.1f} from neutral ({moved[PITCH_ID]:+.1f})')
 
 
+def test_ctrl_c_mid_packet(head):
+    print('-- live: Ctrl+C (twice, like make) on a slow bus -> torque off, checked')
+    for attempt in range(4):
+        # ~ the real bus: FTDI's 16 ms latency timer per answer, so a Ctrl+C
+        # usually lands inside a transaction (what happened on the tower)
+        servos = FakeServos(dict(NEUTRAL), latency=0.016)
+        head.angles = (0.0, 0.0)
+        proc = start_node(live=True)
+        time.sleep(4.0 + 0.013 * attempt)
+        head.angles = (3.0, 3.0)
+        time.sleep(1.0)
+        os.killpg(proc.pid, signal.SIGINT)
+        time.sleep(0.05)
+        os.killpg(proc.pid, signal.SIGINT)
+        code, out = finish(proc, 15)
+        servos.close()
+        torque = [servos.torque(i) for i in NEUTRAL]
+        check(torque == [0, 0], f'run {attempt + 1}: torque off on both (now {torque})')
+        check('Could not' not in out, f'run {attempt + 1}: no "Could not turn ... torque off"')
+
+
 def test_pushed(head):
     print('-- live: a servo pushed away -> torque off')
     servos = FakeServos(dict(NEUTRAL))
@@ -222,6 +244,7 @@ def main():
         test_dry_run(head)
         test_live(head)
         test_reference_waits_for_still_head(head)
+        test_ctrl_c_mid_packet(head)
         test_pushed(head)
     finally:
         head.running = False

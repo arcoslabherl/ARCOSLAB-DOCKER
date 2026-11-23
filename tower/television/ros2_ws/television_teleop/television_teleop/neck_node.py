@@ -11,6 +11,8 @@ bus fails. At start it refuses unless the camera is at neutral (by hand).
 
 import math
 import os
+import signal
+import threading
 import time
 
 import rclpy
@@ -76,6 +78,17 @@ class Bus:
 
     def position(self, servo_id):
         return signed32(self.read(servo_id, ADDR_PRESENT_POSITION, 4))
+
+    def recover(self):
+        """After a transaction cut short (Ctrl+C mid-packet): the SDK keeps
+        the port marked busy and refuses every packet after it. Free it and
+        drop the half-received bytes."""
+        time.sleep(0.03)
+        self.port.is_using = False
+        try:
+            self.port.ser.reset_input_buffer()
+        except Exception:
+            pass
 
     def close(self):
         self.port.closePort()
@@ -278,23 +291,46 @@ class NeckNode(Node):
 
     def stop(self, reason):
         self.stopped = reason
-        self.get_logger().error(f'STOP: {reason}. Torque off.' if self.live else f'STOP: {reason}.')
+        self.say(f'STOP: {reason}.', error=True)
         self.torque_off()
         raise SystemExit(1)
 
+    def say(self, text, error=False):
+        """Log, or print once ROS is shut down (Ctrl+C)."""
+        try:
+            (self.get_logger().error if error else self.get_logger().info)(text)
+        except Exception:
+            print(text, flush=True)
+
     def torque_off(self):
+        """Torque off on both servos, checked by reading it back. A second
+        Ctrl+C does not cut it short."""
         if not self.torque:
             return
-        for a in self.axes.values():
-            for _ in range(3):
-                try:
-                    self.bus.write(a.id, ADDR_TORQUE_ENABLE, 1, 0)
-                    break
-                except Stop:
-                    time.sleep(0.01)
-            else:
-                self.get_logger().error(f'Could not turn {a.name} torque off: unplug the mount\'s power')
-        self.torque = False
+        main_thread = threading.current_thread() is threading.main_thread()
+        previous = signal.signal(signal.SIGINT, signal.SIG_IGN) if main_thread else None
+        try:
+            self.bus.recover()
+            failed = []
+            for a in self.axes.values():
+                for _ in range(5):
+                    try:
+                        self.bus.write(a.id, ADDR_TORQUE_ENABLE, 1, 0)
+                        if self.bus.read(a.id, ADDR_TORQUE_ENABLE, 1) == 0:
+                            break
+                    except Stop:
+                        pass
+                    self.bus.recover()
+                else:
+                    failed.append(a.name)
+            for name in failed:
+                self.say(f'Could not turn {name} torque off: unplug the mount\'s power', error=True)
+            if not failed:
+                self.say('Torque off (both servos, checked).')
+            self.torque = False
+        finally:
+            if main_thread and previous is not None:
+                signal.signal(signal.SIGINT, previous)
 
     def destroy_node(self):
         self.torque_off()
