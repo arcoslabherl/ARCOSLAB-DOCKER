@@ -147,6 +147,29 @@ def test_live(head):
     check(exit_after < 4.0, f'stops within 4 s ({exit_after:.1f} s; timeout 2 s)')
 
 
+def test_reference_waits_for_still_head(head):
+    print('-- live: the reference waits for the head to be still (not a tracking jump)')
+    servos = FakeServos(dict(NEUTRAL))
+    head.angles = None
+    proc = start_node(live=True)
+    time.sleep(3.0)
+    # Tracking starts: one wild pose, then the head still looking forward
+    head.angles = (-32.0, -51.5)
+    time.sleep(0.2)
+    head.angles = (0.0, 0.0)
+    time.sleep(2.5)
+    head.angles = (1.0, 1.0)            # a small move: the camera follows 1 deg
+    time.sleep(2.0)
+    moved = {i: (servos.position(i) - NEUTRAL[i]) / TICKS_PER_DEG for i in NEUTRAL}
+    head.angles = None
+    code, out = finish(proc, 10)
+    servos.close()
+    check('Reference set' in out, 'says when the reference is set')
+    for i, name in ((YAW_ID, 'yaw (ID 2)'), (PITCH_ID, 'pitch (ID 1)')):
+        check(abs(moved[i] - 1.0) < 0.2, f'{name}: +1 deg from the still pose ({moved[i]:+.1f}), '
+              'not saturated by the wild one')
+
+
 def test_pushed(head):
     print('-- live: a servo pushed away -> torque off')
     servos = FakeServos(dict(NEUTRAL))
@@ -171,6 +194,7 @@ def main():
         test_refuses_away_from_neutral(head)
         test_dry_run(head)
         test_live(head)
+        test_reference_waits_for_still_head(head)
         test_pushed(head)
     finally:
         head.running = False

@@ -18,7 +18,7 @@ from dynamixel_sdk import COMM_SUCCESS, PacketHandler, PortHandler
 from geometry_msgs.msg import PoseStamped
 from rclpy.node import Node
 
-from television_teleop.neck import Axis, Follower, deg, head_yaw_pitch
+from television_teleop.neck import Axis, Follower, Settle, deg, head_yaw_pitch
 
 # X series control table (XL330)
 ADDR_OPERATING_MODE = 11
@@ -121,11 +121,10 @@ class NeckNode(Node):
             ('LIVE: torque on, the servos follow the head' if self.live else
              'DRY RUN: nothing is written to the servos') +
             f' (range {range_deg:g} deg, {self.max_speed:g} deg/s). '
-            'The head pose at the first message is the reference.')
+            'The reference: the head after 1 s still, looking forward.')
 
         self.head = None          # (yaw, pitch, monotonic time)
-        self.head_seen = False
-        self.started_at = time.monotonic()
+        self.settle = Settle()
         self.over_error_since = {}
         self.last_log = 0.0
         self.last_error_check = 0.0
@@ -188,7 +187,10 @@ class NeckNode(Node):
         yaw, pitch = head_yaw_pitch(q.x, q.y, q.z, q.w)
         if not (math.isfinite(yaw) and math.isfinite(pitch)):
             return
-        self.head = (yaw, pitch, time.monotonic())
+        now = time.monotonic()
+        self.head = (yaw, pitch, now)
+        if self.follower.reference is None:
+            self.settle.add(now, yaw, pitch)
 
     def tick(self):
         if self.stopped:
@@ -206,9 +208,17 @@ class NeckNode(Node):
                 self.last_log = now
             return
         yaw, pitch, stamp = self.head
+        if self.follower.reference is None:
+            # Not yet: the servos hold where they are
+            if now - stamp > 0.2 or not self.settle.still():
+                if now - self.last_log > 1.0:
+                    self.get_logger().info('Head pose arriving: hold your head still, looking forward...')
+                    self.last_log = now
+                return
+            self.follower.update(yaw, pitch)
+            self.get_logger().info('Reference set: following the head.')
         if now - stamp > self.head_timeout:
             raise Stop(f'no head pose for {self.head_timeout:g} s')
-        self.head_seen = True
 
         goal = self.follower.update(yaw, pitch)
         for a in self.axes.values():

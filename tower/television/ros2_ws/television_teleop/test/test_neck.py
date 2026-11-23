@@ -3,7 +3,7 @@ import math
 import pytest
 from scipy.spatial.transform import Rotation
 
-from television_teleop.neck import Axis, Follower, deg, head_yaw_pitch, step_toward, ticks, wrap_deg
+from television_teleop.neck import Axis, Follower, Settle, deg, head_yaw_pitch, step_toward, ticks, wrap_deg
 
 
 def make_axes(range_deg=3.0):
@@ -87,3 +87,31 @@ def test_follower_starts_from_present():
     # Back toward neutral, one step at a time
     assert off - g['yaw'] == f.max_step
     assert math.isclose(deg(f.max_step), 0.35, abs_tol=0.05)
+
+
+def test_settle_needs_a_still_steady_second():
+    s = Settle()
+    t = 0.0
+    # A jump (tracking starting), then still
+    s.add(t, -32.0, -51.5)
+    for k in range(1, 30):
+        s.add(t + k / 60.0, 0.0, 0.0)
+    assert not s.still()                 # the jump is within the last second
+    for k in range(30, 100):
+        s.add(t + k / 60.0, 0.3, -0.2)
+    assert s.still()
+
+
+def test_settle_rejects_slow_or_moving():
+    slow = Settle()
+    for k in range(15):                  # 15 Hz: too few poses
+        slow.add(k / 15.0, 0.0, 0.0)
+    assert not slow.still()
+    moving = Settle()
+    for k in range(80):
+        moving.add(k / 60.0, k * 0.1, 0.0)   # 6 deg/s
+    assert not moving.still()
+    wrapping = Settle()
+    for k in range(80):
+        wrapping.add(k / 60.0, 179.5 if k % 2 else -179.5, 0.0)
+    assert wrapping.still()              # 1 deg apart across +-180

@@ -72,6 +72,32 @@ def step_toward(current, target, max_step):
     return max(target, current - max_step)
 
 
+class Settle:
+    """Whether the head has been still, with poses arriving steadily, for
+    a while: the reference must not be a pose from the headset starting or
+    losing tracking."""
+
+    def __init__(self, seconds=1.0, max_spread_deg=2.0, min_rate_hz=20.0):
+        self.seconds = seconds
+        self.max_spread = max_spread_deg
+        self.min_count = int(min_rate_hz * seconds)
+        self.poses = []       # (time, yaw, pitch)
+
+    def add(self, t, yaw, pitch):
+        self.poses.append((t, yaw, pitch))
+        self.poses = [p for p in self.poses if t - p[0] <= self.seconds]
+
+    def still(self):
+        if len(self.poses) < self.min_count:
+            return False
+        if self.poses[-1][0] - self.poses[0][0] < 0.9 * self.seconds:
+            return False
+        yaws = [wrap_deg(p[1] - self.poses[-1][1]) for p in self.poses]
+        pitches = [p[2] for p in self.poses]
+        return (max(yaws) - min(yaws) <= self.max_spread
+                and max(pitches) - min(pitches) <= self.max_spread)
+
+
 class Follower:
     """The goals of both axes from the head's yaw and pitch, at a limited
     speed. Call update() at a fixed rate with the latest head angles."""
