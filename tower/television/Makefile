@@ -62,7 +62,7 @@ help:
 	@echo "  make stream-fake    Test pattern instead of the ZED (no camera, no GPU)"
 	@echo "  make head-echo      Head pose in degrees and Hz while a headset is connected"
 	@echo "  make neck-read      Read the camera mount's servos (read only, nothing moves)"
-	@echo "  make neck [LIVE=1] [RANGE=3]  The mount follows the head (dry run unless LIVE=1)"
+	@echo "  make neck [LIVE=1] [RANGE=3] [P_GAIN=800]  The mount follows the head (dry run unless LIVE=1)"
 	@echo "  make stop           Stop the container"
 	@echo ""
 	@echo "Setup and tests:"
@@ -184,10 +184,13 @@ neck-read:
 	docker exec -it $(CONTAINER_NAME) python3 /ros2_ws/scripts/neck_read.py $(NECK_PORT)
 
 # The mount follows the head. Dry run unless LIVE=1. RANGE: deg from neutral.
+# P_GAIN, I_GAIN: the servos' position gains for this run (RAM only).
 LIVE ?= 0
 RANGE ?=
+P_GAIN ?=
+I_GAIN ?=
 neck:
-	$(call exec_session,/ros2_ws/scripts/start_neck.sh $(LIVE) "$(RANGE)" $(NECK_PORT))
+	$(call exec_session,/ros2_ws/scripts/start_neck.sh $(LIVE) "$(RANGE)" $(NECK_PORT) "$(P_GAIN)" "$(I_GAIN)")
 
 test-neck:
 	docker exec -it $(CONTAINER_NAME) bash -c \

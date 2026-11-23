@@ -36,6 +36,9 @@ ADDR_PROFILE_VEL = 112      # 4 bytes
 ADDR_PRESENT_POSITION = 132  # 4 bytes, signed
 ADDR_PRESENT_VOLTAGE = 144  # 2 bytes, 0.1 V
 ADDR_PRESENT_TEMP = 146     # 1 byte, deg C
+ADDR_POSITION_D = 80        # 2 bytes, position PID gains
+ADDR_POSITION_I = 82
+ADDR_POSITION_P = 84
 
 MODELS = {1190: 'XL330-M077', 1200: 'XL330-M288', 1060: 'XL430-W250',
           1020: 'XM430-W350', 1030: 'XM430-W210'}
@@ -133,6 +136,7 @@ def describe(bus, dxl_id, model):
     acc = bus.read(dxl_id, ADDR_PROFILE_ACC, 4)
     volt = bus.read(dxl_id, ADDR_PRESENT_VOLTAGE, 2)
     temp = bus.read(dxl_id, ADDR_PRESENT_TEMP, 1)
+    gains = [bus.read(dxl_id, a, 2) for a in (ADDR_POSITION_P, ADDR_POSITION_I, ADDR_POSITION_D)]
     err = bus.read(dxl_id, ADDR_HARDWARE_ERROR, 1)
     pos = bus.read(dxl_id, ADDR_PRESENT_POSITION, 4)
 
@@ -147,6 +151,7 @@ def describe(bus, dxl_id, model):
     print(f'  position limits {show(lo)}..{show(hi)} ticks '
           f'({show(lo, lambda v: f"{deg(v):.1f}")}..{show(hi, lambda v: f"{deg(v):.1f}")} deg), '
           f'profile velocity {show(vel)}, acceleration {show(acc)}')
+    print(f'  position gains P {show(gains[0])}, I {show(gains[1])}, D {show(gains[2])}')
     print(f'  {show(volt, lambda v: f"{v / 10:.1f}")} V, {show(temp)} C, '
           f'hardware error {show(err, lambda e: "none" if e == 0 else f"0x{e:02x}")}, '
           f'position now {show(pos, lambda p: f"{signed32(p)} ticks ({deg(signed32(p)):.1f} deg)")}')

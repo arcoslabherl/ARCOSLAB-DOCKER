@@ -24,6 +24,8 @@ from television_teleop.neck import Axis, Follower, Settle, deg, head_yaw_pitch, 
 ADDR_OPERATING_MODE = 11
 ADDR_TORQUE_ENABLE = 64
 ADDR_HARDWARE_ERROR = 70
+ADDR_POSITION_I = 82
+ADDR_POSITION_P = 84
 ADDR_PROFILE_ACC = 108
 ADDR_PROFILE_VEL = 112
 ADDR_GOAL_POSITION = 116
@@ -60,13 +62,15 @@ class Bus:
             raise Stop(f'{what}: {self.packet.getRxPacketError(error)}')
 
     def read(self, servo_id, addr, size):
-        reader = {1: self.packet.read1ByteTxRx, 4: self.packet.read4ByteTxRx}[size]
+        reader = {1: self.packet.read1ByteTxRx, 2: self.packet.read2ByteTxRx,
+                  4: self.packet.read4ByteTxRx}[size]
         value, result, error = reader(self.port, servo_id, addr)
         self._check(f'read {addr} from ID {servo_id}', result, error)
         return value
 
     def write(self, servo_id, addr, size, value):
-        writer = {1: self.packet.write1ByteTxRx, 4: self.packet.write4ByteTxRx}[size]
+        writer = {1: self.packet.write1ByteTxRx, 2: self.packet.write2ByteTxRx,
+                  4: self.packet.write4ByteTxRx}[size]
         result, error = writer(self.port, servo_id, addr, value)
         self._check(f'write {addr} to ID {servo_id}', result, error)
 
@@ -87,6 +91,12 @@ class NeckNode(Node):
         self.live = bool(p('live', False).value)
         range_deg = float(p('range_deg', 3.0).value)
         self.max_speed = float(p('max_speed_deg_s', 4.0).value)
+        # Position gains for this run (RAM, lost at power off); -1: leave the servo's
+        self.p_gain = int(p('position_p_gain', -1).value)
+        self.i_gain = int(p('position_i_gain', -1).value)
+        for name, gain in (('P', self.p_gain), ('I', self.i_gain)):
+            if gain > 2000:
+                raise Stop(f'position {name} gain {gain}: at most 2000 here')
         self.rate_hz = float(p('rate_hz', 20.0).value)
         self.start_tolerance = float(p('start_tolerance_deg', 5.0).value)
         self.head_timeout = float(p('head_timeout_s', 2.0).value)
@@ -180,6 +190,13 @@ class NeckNode(Node):
         for a in self.axes.values():
             self.bus.write(a.id, ADDR_PROFILE_ACC, 4, acc)
             self.bus.write(a.id, ADDR_PROFILE_VEL, 4, vel)
+            if self.p_gain >= 0:
+                self.bus.write(a.id, ADDR_POSITION_P, 2, self.p_gain)
+            if self.i_gain >= 0:
+                self.bus.write(a.id, ADDR_POSITION_I, 2, self.i_gain)
+            self.get_logger().info(
+                f'{a.name} (ID {a.id}): position gains P {self.bus.read(a.id, ADDR_POSITION_P, 2)}, '
+                f'I {self.bus.read(a.id, ADDR_POSITION_I, 2)}')
             # Goal = where it is, so torque on does not move it
             self.bus.write(a.id, ADDR_GOAL_POSITION, 4, self.present[a.name] & 0xFFFFFFFF)
         self.torque = True

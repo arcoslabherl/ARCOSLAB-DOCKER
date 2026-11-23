@@ -12,6 +12,8 @@ television_neck:
     start_tolerance_deg: 5.0 # the camera must start this close to neutral
     head_timeout_s: 2.0      # no head pose this long: torque off, exit
     max_error_deg: 5.0       # a servo this far from its goal for 0.5 s: torque off, exit
+    position_p_gain: -1      # -1: leave the servo's (XL330 default 400); 'make neck P_GAIN=800'
+    position_i_gain: -1      # -1: leave the servo's (default 0)
     # Left/right: ID 2. Head turned left -> angle up.
     yaw_id: 2
     yaw_neutral_deg: 55.0     # easier to set by hand than the 33 measured (user)
@@ -27,4 +29,4 @@ television_neck:
     # Absolute pitch: the angle with the camera level (measured "forward and
     # level", 2026-11-23). Head horizontal -> this; head 10 deg down -> 10
     # more. Negative: pitch relative to the reference, like yaw.
-    pitch_level_deg: 268.0
+    pitch_level_deg: -1.0    # relative for now (worked on the tower); 268.0 = absolute

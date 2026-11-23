@@ -3,12 +3,14 @@ set -e
 
 # ARCoS-Lab TeleVision - the camera mount follows the head
 #
-# Usage: start_neck.sh [live] [range_deg] [port]
+# Usage: start_neck.sh [live] [range_deg] [port] [p_gain] [i_gain]
 #   live: 0 (dry run, nothing written) or 1
 
 LIVE="${1:-0}"
 RANGE="${2:-}"
 PORT="${3:-}"
+P_GAIN="${4:-}"
+I_GAIN="${5:-}"
 
 source /opt/ros/humble/setup.bash
 source /ros2_ws/install/setup.bash
@@ -25,6 +27,8 @@ fi
 
 ARGS=(-p live:=$([[ "$LIVE" == 1 ]] && echo true || echo false))
 [[ -n "$RANGE" ]] && ARGS+=(-p range_deg:="$RANGE")
+[[ -n "$P_GAIN" ]] && ARGS+=(-p position_p_gain:="$P_GAIN")
+[[ -n "$I_GAIN" ]] && ARGS+=(-p position_i_gain:="$I_GAIN")
 if [[ -n "$PORT" ]]; then
     [[ "$PORT" == /dev/* ]] && PORT="/hostdev/${PORT#/dev/}"
     ARGS+=(-p port:="$PORT")
