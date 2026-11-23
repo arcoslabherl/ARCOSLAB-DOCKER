@@ -14,13 +14,13 @@ television_neck:
     max_error_deg: 5.0       # a servo this far from its goal for 0.5 s: torque off, exit
     # Left/right: ID 2. Head turned left -> angle up.
     yaw_id: 2
-    yaw_neutral_deg: 33.0
+    yaw_neutral_deg: 55.0     # easier to set by hand than the 33 measured (user)
     yaw_min_deg: 5.0         # right: the mount goes to -59, but position mode stops at 0
     yaw_max_deg: 96.0        # left
     yaw_sign: 1
     # Up/down: ID 1. Head looking down -> angle up.
     pitch_id: 1
-    pitch_neutral_deg: 268.0
+    pitch_neutral_deg: 275.0  # easier to set by hand than the 268 measured (user)
     pitch_min_deg: 252.0     # up: mechanical stop at 248
     pitch_max_deg: 312.0     # down: the camera can go much lower, keep it here
     pitch_sign: 1

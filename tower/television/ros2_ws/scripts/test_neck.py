@@ -25,7 +25,16 @@ from fake_dxl import TICKS_PER_DEG, FakeServos  # noqa: E402
 CONFIG = '/ros2_ws/install/television_teleop/share/television_teleop/config/neck.yaml'
 PORT = '/tmp/fake_u2d2'
 PITCH_ID, YAW_ID = 1, 2
-NEUTRAL = {PITCH_ID: round(268.0 * TICKS_PER_DEG), YAW_ID: round(33.0 * TICKS_PER_DEG)}
+
+def _neutral():
+    import yaml
+    with open(CONFIG.replace('/install/television_teleop/share/television_teleop/', '/television_teleop/')) as f:
+        p = yaml.safe_load(f)['television_neck']['ros__parameters']
+    return {PITCH_ID: round(p['pitch_neutral_deg'] * TICKS_PER_DEG),
+            YAW_ID: round(p['yaw_neutral_deg'] * TICKS_PER_DEG)}
+
+
+NEUTRAL = _neutral()   # from neck.yaml
 RANGE_TICKS = round(3.0 * TICKS_PER_DEG)
 MAX_STEP = int(4.0 * TICKS_PER_DEG / 10.0)    # 4 deg/s at 10 Hz
 ADDR_TORQUE, ADDR_GOAL = 64, 116
