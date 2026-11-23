@@ -68,5 +68,20 @@ left eye, `R` in the right one, the orange bar in front of the grid). Then
 `https://localhost:8012` in a browser on this machine.
 `make head-echo` prints the head pose while a headset is connected.
 
+## Camera that follows the head (in testing)
+
+The ZED's mount has 2 servos (ID 1 up/down, ID 2 left/right) on their own
+U2D2. With `make stream` running and the headset in VR:
+
+1. Move the camera to neutral by hand (`make neck-read` shows the angles;
+   neutral in `ros2_ws/television_teleop/config/neck.yaml`). Ctrl+C.
+2. `make neck`: dry run, prints where it would move the servos. Nothing moves.
+3. `make neck LIVE=1`: the servos follow the head, at most 3° from
+   neutral (`RANGE=...`), 4°/s. Ctrl+C turns the torque off.
+
+It stops by itself (torque off) when the head pose stops for 2 s or a
+servo can't reach its goal. `make test-neck` checks all this with fake
+servos.
+
 Settings (resolution, rates, JPEG quality):
 `ros2_ws/television_teleop/config/stream.yaml`, then restart `make stream`.

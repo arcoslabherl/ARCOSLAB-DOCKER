@@ -53,7 +53,7 @@ define exec_session
 		docker exec -it -e SESSION_ID=$$$$ $(CONTAINER_NAME) bash $(1)'
 endef
 
-.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo neck-read test-unit test-stream stop
+.PHONY: help setup update .build run debug .colcon_build cert cert-tailscale udev stream stream-fake head-echo neck-read neck test-neck test-unit test-stream stop
 
 help:
 	@echo "Video to the headset (README.md):"
@@ -62,6 +62,7 @@ help:
 	@echo "  make stream-fake    Test pattern instead of the ZED (no camera, no GPU)"
 	@echo "  make head-echo      Head pose in degrees and Hz while a headset is connected"
 	@echo "  make neck-read      Read the camera mount's servos (read only, nothing moves)"
+	@echo "  make neck [LIVE=1] [RANGE=3]  The mount follows the head (dry run unless LIVE=1)"
 	@echo "  make stop           Stop the container"
 	@echo ""
 	@echo "Setup and tests:"
@@ -72,6 +73,7 @@ help:
 	@echo "  make update         After 'git pull': compile"
 	@echo "  make test-unit      Unit tests (no camera)"
 	@echo "  make test-stream    Fake headset against a running stream (make stream-fake first)"
+	@echo "  make test-neck      The neck against fake servos and a fake head (no hardware)"
 	@echo ""
 	@echo "Other: make .build, .colcon_build, debug"
 
@@ -180,6 +182,16 @@ head-echo:
 
 neck-read:
 	docker exec -it $(CONTAINER_NAME) python3 /ros2_ws/scripts/neck_read.py $(NECK_PORT)
+
+# The mount follows the head. Dry run unless LIVE=1. RANGE: deg from neutral.
+LIVE ?= 0
+RANGE ?=
+neck:
+	$(call exec_session,/ros2_ws/scripts/start_neck.sh $(LIVE) "$(RANGE)" $(NECK_PORT))
+
+test-neck:
+	docker exec -it $(CONTAINER_NAME) bash -c \
+		"$(ROS_SOURCE) && python3 /ros2_ws/scripts/test_neck.py"
 
 test-unit:
 	docker exec -it -e PYTHONDONTWRITEBYTECODE=1 $(CONTAINER_NAME) bash -c \

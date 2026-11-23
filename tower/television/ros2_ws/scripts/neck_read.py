@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Read the camera mount's 2 Dynamixel servos (ID 1 yaw, ID 2 pitch).
+"""Read the camera mount's 2 Dynamixel servos (ID 1 up/down, ID 2 left/right).
 READ ONLY: never writes to the servos, so nothing moves and the torque
 stays as it is.
 
@@ -16,7 +16,8 @@ import time
 
 from dynamixel_sdk import COMM_SUCCESS, PacketHandler, PortHandler
 
-SERVOS = {1: 'yaw', 2: 'pitch'}
+# As wired on the mount (checked 2026-11-23)
+SERVOS = {1: 'pitch (up/down)', 2: 'yaw (left/right)'}
 BAUD = 57600
 OTHER_BAUDS = [1000000, 115200, 2000000, 9600]
 # The GELLO's U2D2: its servos are Dynamixels with IDs 1 and 2 too

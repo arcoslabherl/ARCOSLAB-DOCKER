@@ -1,0 +1,26 @@
+# television_neck: the camera mount's 2 servos follow the head (make neck).
+# Angles in degrees as 'make neck-read' shows them (the servo's dial),
+# measured by hand on 2026-11-23.
+television_neck:
+  ros__parameters:
+    port: /hostdev/serial/by-id/usb-FTDI_USB__-__Serial_Converter_FTBEO5IA-if00-port0
+    baud: 57600
+    live: false              # false: dry run, nothing written ('make neck LIVE=1')
+    range_deg: 3.0           # at most this far from neutral ('make neck RANGE=...')
+    max_speed_deg_s: 4.0
+    rate_hz: 10.0
+    start_tolerance_deg: 5.0 # the camera must start this close to neutral
+    head_timeout_s: 2.0      # no head pose this long: torque off, exit
+    max_error_deg: 5.0       # a servo this far from its goal for 0.5 s: torque off, exit
+    # Left/right: ID 2. Head turned left -> angle up.
+    yaw_id: 2
+    yaw_neutral_deg: 33.0
+    yaw_min_deg: 5.0         # right: the mount goes to -59, but position mode stops at 0
+    yaw_max_deg: 96.0        # left
+    yaw_sign: 1
+    # Up/down: ID 1. Head looking down -> angle up.
+    pitch_id: 1
+    pitch_neutral_deg: 268.0
+    pitch_min_deg: 252.0     # up: mechanical stop at 248
+    pitch_max_deg: 312.0     # down: the camera can go much lower, keep it here
+    pitch_sign: 1

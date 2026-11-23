@@ -24,6 +24,7 @@ setup(
     entry_points={
         'console_scripts': [
             'television_stream = television_teleop.stream_node:main',
+            'television_neck = television_teleop.neck_node:main',
         ],
     },
 )
