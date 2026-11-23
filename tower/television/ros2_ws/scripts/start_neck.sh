@@ -26,6 +26,8 @@ if [[ -n "${SESSION_ID:-}" ]]; then
 fi
 
 ARGS=(-p live:=$([[ "$LIVE" == 1 ]] && echo true || echo false))
+# A double for ROS: 10 -> 10.0
+[[ -n "$RANGE" && "$RANGE" != *.* ]] && RANGE="$RANGE.0"
 [[ -n "$RANGE" ]] && ARGS+=(-p range_deg:="$RANGE")
 [[ -n "$P_GAIN" ]] && ARGS+=(-p position_p_gain:="$P_GAIN")
 [[ -n "$I_GAIN" ]] && ARGS+=(-p position_i_gain:="$I_GAIN")
