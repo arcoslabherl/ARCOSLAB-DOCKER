@@ -104,6 +104,8 @@ class NeckNode(Node):
         self.live = bool(p('live', False).value)
         range_deg = float(p('range_deg', 3.0).value)
         self.max_speed = float(p('max_speed_deg_s', 4.0).value)
+        if not 0.0 < self.max_speed <= 60.0:
+            raise Stop(f'max_speed_deg_s {self.max_speed:g}: must be in (0, 60]')
         # Position gains for this run (RAM, lost at power off); -1: leave the servo's
         self.p_gain = int(p('position_p_gain', -1).value)
         self.i_gain = int(p('position_i_gain', -1).value)
@@ -157,6 +159,8 @@ class NeckNode(Node):
         self.over_error_since = {}
         self.last_log = 0.0
         self.last_error_check = 0.0
+        self.tick_times = []      # how long each control tick takes (bus time)
+        self.last_timing = time.monotonic()
         self.stopped = None
         self.create_subscription(PoseStamped, 'television/head_pose', self.on_head, 10)
         self.create_timer(1.0 / self.rate_hz, self.tick)
@@ -231,10 +235,18 @@ class NeckNode(Node):
     def tick(self):
         if self.stopped:
             return
+        start = time.monotonic()
         try:
             self.step()
         except Stop as e:
             self.stop(str(e))
+        self.tick_times.append(time.monotonic() - start)
+        if start - self.last_timing >= 5.0 and self.follower.reference is not None:
+            t = sorted(self.tick_times)
+            period = 1000.0 / self.rate_hz
+            self.say(f'Bus time per tick: median {1000 * t[len(t) // 2]:.0f} ms, '
+                     f'max {1000 * t[-1]:.0f} ms (of {period:.0f} ms at {self.rate_hz:g} Hz)')
+            self.tick_times, self.last_timing = [], start
 
     def step(self):
         now = time.monotonic()
